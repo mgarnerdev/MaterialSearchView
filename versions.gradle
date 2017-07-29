@@ -1,0 +1,11 @@
+ext.versions = [
+        minSdk        : 16,
+        compileSdk    : 26,
+        targetSdk     : 26,
+        buildTools    : "26.0.1",
+        versionName   : "1.0.0",
+        versionCode   : 100,
+        gradlePlugin  : "2.3.3",
+
+        supportLibrary: "26.0.0"
+]

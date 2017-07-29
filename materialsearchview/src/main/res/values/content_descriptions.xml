@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cd_search_button">Search Button</string>
+    <string name="cd_voice_search_button">Voice Search Button</string>
+    <string name="cd_recent_search_icon">Recent Search Icon</string>
+</resources>

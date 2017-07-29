@@ -1,0 +1,4 @@
+<resources>
+    <string name="lib_name">MaterialSearchView</string>
+    <string name="material_search_view_input_hint">Search&#8230;</string>
+</resources>

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="cd_background">Background Image</string>
+    <string name="cd_logo">Logo</string>
+    <string name="cd_search_button">Search Button</string>
+    <string name="cd_voice_search_button">Voice Search Button</string>
+    <string name="cd_category_icon">Category Icon</string>
+</resources>
