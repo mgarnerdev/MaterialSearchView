@@ -1,12 +1,21 @@
 package com.michaelgarnerdev.materialsearchview;
 
+import android.Manifest.permission;
 import android.content.Context;
+import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.content.res.Resources;
+import android.os.Build.VERSION;
 import android.os.Build.VERSION_CODES;
+import android.os.Bundle;
 import android.os.Handler;
+import android.speech.RecognitionListener;
+import android.speech.RecognizerIntent;
+import android.speech.SpeechRecognizer;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.annotation.RequiresApi;
+import android.support.v4.content.ContextCompat;
 import android.support.v7.widget.LinearLayoutManager;
 import android.support.v7.widget.RecyclerView;
 import android.support.v7.widget.RecyclerView.ViewHolder;
@@ -35,13 +44,14 @@ import com.michaelgarnerdev.materialsearchview.SearchDatabase.GetRecentSearchesT
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
+import java.util.Locale;
 
 /**
  * Created by mgarnerdev on 7/29/2017.
  * MaterialSearchView helps you add material-themed searching to your app with ease.
  */
 
-public class MaterialSearchView extends LinearLayout implements DatabaseReadSearchesListener {
+public class MaterialSearchView extends LinearLayout implements DatabaseReadSearchesListener, RecognitionListener {
     private static final String TAG = MaterialSearchView.class.getSimpleName();
 
     private static final long TIME_SEARCH_AFTER_KEY_PRESS_DELAY = 300;
@@ -63,6 +73,7 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
     private SuggestionsAdapter mSuggestionsAdapter;
     private ArrayList<SearchViewListener> mListeners = new ArrayList<>();
     private float mSuggestionRowHeight = 0;
+    private TextWatcher mSearchTextChangedListener;
 
     public MaterialSearchView(Context context) {
         this(context, null);
@@ -113,11 +124,19 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
             public void onClick(View view) {
                 if (mSearchInputEditText != null) {
                     resetSearch(true);
+                    clearSuggestions();
                 }
             }
         });
 
-        mSearchInputEditText.addTextChangedListener(new TextWatcher() {
+        mMicButton.setOnClickListener(new OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                startVoiceSearch();
+            }
+        });
+
+        mSearchTextChangedListener = new TextWatcher() {
             @Override
             public void beforeTextChanged(CharSequence charSequence, int i, int i1, int i2) {
 
@@ -142,7 +161,9 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
             public void afterTextChanged(final Editable editable) {
 
             }
-        });
+        };
+
+        mSearchInputEditText.addTextChangedListener(mSearchTextChangedListener);
 
         mSearchInputEditText.setOnEditorActionListener(new OnEditorActionListener() {
             @Override
@@ -150,20 +171,7 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
                 if (keyEvent != null && (keyEvent.getKeyCode() == KeyEvent.KEYCODE_ENTER
                         || imeActionId == EditorInfo.IME_ACTION_DONE
                         || keyEvent.getKeyCode() == KeyEvent.KEYCODE_SEARCH)) {
-                    closeKeyboard();
-                    String searchTerm = mSearchInputEditText.getText() != null ? mSearchInputEditText.getText().toString() : "";
-                    if (!TextUtils.isEmpty(searchTerm)) {
-                        SearchDatabase.addPerformedSearch(null, new PerformedSearch(searchTerm, String.valueOf(System.currentTimeMillis())));
-                        if (mListeners != null) {
-                            for (SearchViewListener listener : mListeners) {
-                                listener.onSearch(searchTerm);
-                            }
-                            showMic();
-                        }
-                        return true;
-                    } else {
-                        return false;
-                    }
+                    return search(mSearchInputEditText.getText().toString());
                 }
                 return false;
             }
@@ -172,18 +180,57 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
         mSearchInputEditText.setOnFocusChangeListener(new OnFocusChangeListener() {
             @Override
             public void onFocusChange(View view, boolean focused) {
-                if (!focused) {
-                    //collapseSuggestions();
+                if (focused) {
+                    String currentText = mSearchInputEditText.getText().toString();
+                    if (currentText.length() > 0) {
+                        hideMic();
+                        mFilterSearchTask = SearchDatabase.filterSearchesBy(currentText, MaterialSearchView.this);
+                    } else {
+                        showMic();
+                        mRecentSearchesTask = SearchDatabase.getRecentSearches(5, MaterialSearchView.this);
+                    }
                 }
             }
         });
+    }
 
-        mSearchInputEditText.setOnClickListener(new OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                mRecentSearchesTask = SearchDatabase.getRecentSearches(5, MaterialSearchView.this);
+    private void startVoiceSearch() {
+        if (VERSION.SDK_INT >= VERSION_CODES.M) {
+            int permissionStatus = ContextCompat.checkSelfPermission(mContext.get(), permission.RECORD_AUDIO);
+            if (permissionStatus == PackageManager.PERMISSION_GRANTED) {
+                performVoiceSearch();
+            } else {
+
             }
-        });
+        }
+    }
+
+    private void performVoiceSearch() {
+        if (SpeechRecognizer.isRecognitionAvailable(mContext.get())) {
+            Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                    RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault());
+            intent.putExtra(RecognizerIntent.EXTRA_PROMPT,
+                    mContext.get().getString(R.string.speech_prompt));
+            SpeechRecognizer speechRecognizer = SpeechRecognizer.createSpeechRecognizer(mContext.get());
+            speechRecognizer.setRecognitionListener(this);
+            speechRecognizer.startListening(intent);
+        } else {
+
+        }
+    }
+
+    private void clearSuggestions() {
+        if (mSearchInputEditText.hasFocus()) {
+            mRecentSearchesTask = SearchDatabase.getRecentSearches(5, MaterialSearchView.this);
+        } else {
+            if (mSuggestionsAdapter != null) {
+                mSuggestionsAdapter.setSuggestions(new ArrayList<PerformedSearch>());
+                adjustSuggestionsBoxHeight(0);
+            }
+        }
+
     }
 
     private void adjustSuggestionsBoxHeight(int numberOfRows) {
@@ -194,35 +241,33 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
         }
     }
 
-    private void expandSuggestions(int numberOfRows) {
-        if (mSuggestionsRecyclerView != null) {
-            int currentHeight = mSuggestionsRecyclerView.getHeight();
-            int targetHeight = (int) (numberOfRows * mSuggestionRowHeight);
-            Log.d(TAG, ".expandSuggestions(" + numberOfRows + ") - CURRENT_HEIGHT = '" + currentHeight + "'");
-            Log.d(TAG, ".expandSuggestions(" + numberOfRows + ") - TARGET_HEIGHT = '" + targetHeight + "'");
-            mSuggestionsRecyclerView.animate()
-                    .yBy(targetHeight - currentHeight)
-                    .setDuration(300)
-                    .start();
-        }
-    }
-
-    private void collapseSuggestions() {
-        if (mSuggestionsRecyclerView != null) {
-            int currentHeight = mSuggestionsRecyclerView.getHeight();
-            int targetHeight = 0;
-            mSuggestionsRecyclerView.animate()
-                    .yBy(targetHeight - currentHeight)
-                    .setDuration(300)
-                    .start();
-        }
-    }
-
     private void resetSearch(boolean emptyText) {
         if (emptyText) {
             mSearchInputEditText.setText("");
         }
         showMic();
+    }
+
+    private boolean search(@NonNull String searchTerm) {
+        if (mSearchInputEditText != null) {
+            mSearchInputEditText.clearFocus();
+            mSearchInputEditText.removeTextChangedListener(mSearchTextChangedListener);
+            mSearchInputEditText.setText(searchTerm);
+            mSearchInputEditText.addTextChangedListener(mSearchTextChangedListener);
+        }
+        closeKeyboard();
+        if (!TextUtils.isEmpty(searchTerm)) {
+            SearchDatabase.addPerformedSearch(null, new PerformedSearch(searchTerm, String.valueOf(System.currentTimeMillis())));
+            if (mListeners != null) {
+                for (SearchViewListener listener : mListeners) {
+                    listener.onSearch(searchTerm);
+                }
+                showMic();
+            }
+            return true;
+        } else {
+            return false;
+        }
     }
 
     private void showMic() {
@@ -239,6 +284,7 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
 
     private void closeKeyboard() {
         if (mContext != null && mSearchInputEditText != null) {
+            clearSuggestions();
             InputMethodManager inputManager = (InputMethodManager)
                     mContext.get().getSystemService(Context.INPUT_METHOD_SERVICE);
             inputManager.hideSoftInputFromWindow(mSearchInputEditText.getWindowToken(),
@@ -314,6 +360,51 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
         }
     }
 
+    @Override
+    public void onReadyForSpeech(Bundle bundle) {
+
+    }
+
+    @Override
+    public void onBeginningOfSpeech() {
+
+    }
+
+    @Override
+    public void onRmsChanged(float v) {
+
+    }
+
+    @Override
+    public void onBufferReceived(byte[] bytes) {
+
+    }
+
+    @Override
+    public void onEndOfSpeech() {
+
+    }
+
+    @Override
+    public void onError(int i) {
+
+    }
+
+    @Override
+    public void onResults(Bundle bundle) {
+
+    }
+
+    @Override
+    public void onPartialResults(Bundle bundle) {
+
+    }
+
+    @Override
+    public void onEvent(int i, Bundle bundle) {
+
+    }
+
     public class SuggestionsAdapter extends RecyclerView.Adapter<SuggestionViewHolder> {
 
         @NonNull
@@ -345,15 +436,25 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
             mSuggestions = suggestions;
             notifyDataSetChanged();
         }
-
     }
 
     public class SuggestionViewHolder extends ViewHolder {
+        private final View mRootView;
         private TextView mSuggestionTextView;
         private View mDivider;
 
+        private OnClickListener mOnClickListener = new OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                if (mSuggestionTextView != null) {
+                    search(mSuggestionTextView.getText().toString());
+                }
+            }
+        };
+
         public SuggestionViewHolder(View itemView) {
             super(itemView);
+            mRootView = itemView;
             mSuggestionTextView = itemView.findViewById(R.id.list_item_suggestion);
             mDivider = itemView.findViewById(R.id.list_item_divider_line);
         }
@@ -361,6 +462,7 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
         public void bind(@NonNull String suggestion) {
             mSuggestionTextView.setText(suggestion);
             mDivider.setVisibility(View.VISIBLE);
+            mRootView.setOnClickListener(mOnClickListener);
         }
 
         public void hideDivider() {
@@ -370,5 +472,11 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
 
     public interface SearchViewListener {
         void onSearch(@NonNull String searchTerm);
+
+        void onVoiceSearchFailed(int error);
+
+        void onVoiceSearchPermissionNeeded();
+
+        void onVoiceSearchIncompatible();
     }
 }

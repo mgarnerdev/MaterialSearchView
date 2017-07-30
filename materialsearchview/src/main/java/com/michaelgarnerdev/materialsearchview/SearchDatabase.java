@@ -1,6 +1,5 @@
 package com.michaelgarnerdev.materialsearchview;
 
-import android.content.ContentValues;
 import android.content.Context;
 import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
@@ -87,7 +86,8 @@ public class SearchDatabase extends SQLiteOpenHelper {
             "CREATE TABLE " + SEARCHES_TABLE_NAME + " (" +
                     COLUMN_NAME_ID + " INTEGER PRIMARY KEY," +
                     COLUMN_NAME_SEARCH_TERM + TEXT_TYPE + COMMA_SEP +
-                    COLUMN_NAME_SEARCH_DATE + REAL_TYPE +
+                    COLUMN_NAME_SEARCH_DATE + REAL_TYPE + COMMA_SEP +
+                    " UNIQUE(" + COLUMN_NAME_SEARCH_TERM + ")" +
                     ")";
 
     private static final String SQL_DELETE_ENTRIES =
@@ -129,11 +129,12 @@ public class SearchDatabase extends SQLiteOpenHelper {
 
     private static boolean addPerformedSearch(@NonNull SQLiteDatabase database,
                                               @NonNull PerformedSearch performedSearch) {
-        ContentValues values = new ContentValues();
-        values.put(COLUMN_NAME_SEARCH_TERM, performedSearch.getSearchTerm());
-        values.put(COLUMN_NAME_SEARCH_DATE, performedSearch.getDate());
-
-        return database.insert(SearchDatabase.SEARCHES_TABLE_NAME, null, values) != -1;
+        String insertQuery = "INSERT OR IGNORE INTO " +
+                SEARCHES_TABLE_NAME + "(" +
+                COLUMN_NAME_SEARCH_TERM + COMMA_SEP + COLUMN_NAME_SEARCH_DATE +
+                ") VALUES('" + performedSearch.getSearchTerm() + "'" + COMMA_SEP +
+                "'" + performedSearch.getDate() + "')";
+        return database.rawQuery(insertQuery, null).getCount() != 0;
     }
 
     public static GetPerformedSearchesStartingWithTask filterSearchesBy(@NonNull String searchTerm,
