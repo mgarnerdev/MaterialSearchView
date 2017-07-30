@@ -324,7 +324,7 @@ public class SearchDatabase extends SQLiteOpenHelper {
             if (readableDatabase != null) {
                 String query = "SELECT * FROM "
                         + SEARCHES_TABLE_NAME
-                        + " ORDER BY " + COLUMN_NAME_SEARCH_DATE + " ASC LIMIT " + DEFAULT_LIMIT;
+                        + " ORDER BY " + COLUMN_NAME_SEARCH_DATE + " DESC LIMIT " + DEFAULT_LIMIT;
                 Cursor cursor = readableDatabase.rawQuery(query, null);
                 if (cursor != null) {
                     cursor.moveToFirst();

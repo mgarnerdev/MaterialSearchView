@@ -53,4 +53,19 @@ public class MainActivity extends AppCompatActivity implements SearchViewListene
         Log.d(TAG, "SEARCH TERM: " + searchTerm);
         Snackbar.make(mRootLayout, searchTerm, Snackbar.LENGTH_SHORT).show();
     }
+
+    @Override
+    public void onVoiceSearchFailed(int error) {
+
+    }
+
+    @Override
+    public void onVoiceSearchPermissionNeeded() {
+
+    }
+
+    @Override
+    public void onVoiceSearchIncompatible() {
+
+    }
 }
