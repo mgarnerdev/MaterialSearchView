@@ -14,6 +14,7 @@ import android.text.Editable;
 import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.util.AttributeSet;
+import android.util.Log;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -85,6 +86,7 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
     @Override
     protected void onFinishInflate() {
         super.onFinishInflate();
+        Log.d(TAG, ".onFinishInflate()");
         inflate(mContext.get(), R.layout.material_search_view, this);
         setupView();
     }
@@ -103,7 +105,7 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
             @Override
             public void onClick(View view) {
                 if (mSearchInputEditText != null) {
-                    resetSearch();
+                    resetSearch(true);
                 }
             }
         });
@@ -116,16 +118,18 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
 
             @Override
             public void onTextChanged(CharSequence charSequence, int i, int i1, int i2) {
-                if (mMicVisible && charSequence != null && charSequence.length() > 0) {
-                    mMicVisible = false;
-                    mMicButton.setVisibility(View.GONE);
-                    mCancelButton.setVisibility(View.VISIBLE);
-                }
                 if (charSequence != null && charSequence.length() > 0) {
                     if (mFilterRunnable != null) {
                         mHandler.removeCallbacks(mFilterRunnable);
                     }
                     mHandler.postDelayed(createFilterRunnable(charSequence.toString()), TIME_SEARCH_AFTER_KEY_PRESS_DELAY);
+                    if (mMicVisible) {
+                        mMicVisible = false;
+                        mMicButton.setVisibility(View.GONE);
+                        mCancelButton.setVisibility(View.VISIBLE);
+                    }
+                } else {
+                    resetSearch(false);
                 }
             }
 
@@ -149,7 +153,7 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
                             for (SearchViewListener listener : mListeners) {
                                 listener.onSearch(searchTerm);
                             }
-                            resetSearch();
+                            resetSearch(true);
                         }
                         return true;
                     } else {
@@ -161,8 +165,10 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
         });
     }
 
-    private void resetSearch() {
-        mSearchInputEditText.setText("");
+    private void resetSearch(boolean emptyText) {
+        if (emptyText) {
+            mSearchInputEditText.setText("");
+        }
         mMicButton.setVisibility(View.VISIBLE);
         mCancelButton.setVisibility(View.GONE);
         mMicVisible = true;
@@ -199,6 +205,9 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
         mFilterRunnable = new Runnable() {
             @Override
             public void run() {
+                if (mFilterSearchTask != null) {
+                    mFilterSearchTask.cancel();
+                }
                 mFilterSearchTask = SearchDatabase.filterSearchesBy(searchTerm, MaterialSearchView.this);
             }
         };
@@ -208,6 +217,7 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
+        Log.d(TAG, ".onAttachedToWindow()");
         SearchDatabase.init(mContext.get());
         mRecentSearchesTask = SearchDatabase.getRecentSearches(5, MaterialSearchView.this);
     }
@@ -215,6 +225,7 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
+        Log.d(TAG, ".onDetachedFromWindow()");
         SearchDatabase.destroy();
         mContext = null;
         if (mFilterSearchTask != null) {
@@ -269,6 +280,7 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
 
         public void setSuggestions(@NonNull ArrayList<PerformedSearch> suggestions) {
             mSuggestions = suggestions;
+            notifyDataSetChanged();
         }
     }
 
