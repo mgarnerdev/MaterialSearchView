@@ -12,6 +12,7 @@ import android.os.Handler;
 import android.speech.RecognitionListener;
 import android.speech.RecognizerIntent;
 import android.speech.SpeechRecognizer;
+import android.support.annotation.IntDef;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.annotation.RequiresApi;
@@ -42,9 +43,12 @@ import com.michaelgarnerdev.materialsearchview.SearchDatabase.DatabaseReadSearch
 import com.michaelgarnerdev.materialsearchview.SearchDatabase.GetPerformedSearchesStartingWithTask;
 import com.michaelgarnerdev.materialsearchview.SearchDatabase.GetRecentSearchesTask;
 
+import java.lang.annotation.Retention;
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Locale;
+
+import static java.lang.annotation.RetentionPolicy.SOURCE;
 
 /**
  * Created by mgarnerdev on 7/29/2017.
@@ -56,7 +60,6 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
 
     private static final long TIME_SEARCH_AFTER_KEY_PRESS_DELAY = 300;
 
-
     private WeakReference<Context> mContext;
 
     private EditText mSearchInputEditText;
@@ -65,7 +68,6 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
 
     private Handler mHandler = new Handler();
 
-    private boolean mMicVisible = true;
     private GetPerformedSearchesStartingWithTask mFilterSearchTask;
     private GetRecentSearchesTask mRecentSearchesTask;
     private Runnable mFilterRunnable;
@@ -74,6 +76,7 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
     private ArrayList<SearchViewListener> mListeners = new ArrayList<>();
     private float mSuggestionRowHeight = 0;
     private TextWatcher mSearchTextChangedListener;
+    private OnEditorActionListener mOnEditorActionListener;
 
     public MaterialSearchView(Context context) {
         this(context, null);
@@ -89,6 +92,7 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
     }
 
     @RequiresApi(api = VERSION_CODES.LOLLIPOP)
+    @SuppressWarnings("unused")
     public MaterialSearchView(Context context, @Nullable AttributeSet attrs, int defStyleAttr, int defStyleRes) {
         super(context, attrs, defStyleAttr, defStyleRes);
         init(context);
@@ -122,10 +126,7 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
         mCancelButton.setOnClickListener(new OnClickListener() {
             @Override
             public void onClick(View view) {
-                if (mSearchInputEditText != null) {
-                    resetSearch(true);
-                    clearSuggestions();
-                }
+                moveToState(STATE_FOCUSED_EMPTY);
             }
         });
 
@@ -145,15 +146,9 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
             @Override
             public void onTextChanged(CharSequence charSequence, int i, int i1, int i2) {
                 if (charSequence != null && charSequence.length() > 0) {
-                    if (mFilterRunnable != null) {
-                        mHandler.removeCallbacks(mFilterRunnable);
-                    }
-                    mHandler.postDelayed(createFilterRunnable(charSequence.toString()), TIME_SEARCH_AFTER_KEY_PRESS_DELAY);
-                    if (mMicVisible) {
-                        hideMic();
-                    }
+                    moveToState(STATE_FOCUSED_TEXT_PRESENT_DELAY_SEARCH);
                 } else {
-                    resetSearch(false);
+                    moveToState(STATE_FOCUSED_EMPTY);
                 }
             }
 
@@ -165,33 +160,38 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
 
         mSearchInputEditText.addTextChangedListener(mSearchTextChangedListener);
 
-        mSearchInputEditText.setOnEditorActionListener(new OnEditorActionListener() {
+        mOnEditorActionListener = new OnEditorActionListener() {
             @Override
             public boolean onEditorAction(TextView textView, int imeActionId, KeyEvent keyEvent) {
-                if (keyEvent != null && (keyEvent.getKeyCode() == KeyEvent.KEYCODE_ENTER
+                return keyEvent != null
+                        && (keyEvent.getKeyCode() == KeyEvent.KEYCODE_ENTER
                         || imeActionId == EditorInfo.IME_ACTION_DONE
-                        || keyEvent.getKeyCode() == KeyEvent.KEYCODE_SEARCH)) {
-                    return search(mSearchInputEditText.getText().toString());
-                }
-                return false;
+                        || keyEvent.getKeyCode() == KeyEvent.KEYCODE_SEARCH)
+                        && search(getSearchTerm());
             }
-        });
+        };
+        mSearchInputEditText.setOnEditorActionListener(mOnEditorActionListener);
 
         mSearchInputEditText.setOnFocusChangeListener(new OnFocusChangeListener() {
             @Override
             public void onFocusChange(View view, boolean focused) {
+                String currentText = getSearchTerm();
                 if (focused) {
-                    String currentText = mSearchInputEditText.getText().toString();
                     if (currentText.length() > 0) {
-                        hideMic();
-                        mFilterSearchTask = SearchDatabase.filterSearchesBy(currentText, MaterialSearchView.this);
+                        moveToState(STATE_FOCUSED_TEXT_PRESENT);
                     } else {
-                        showMic();
-                        mRecentSearchesTask = SearchDatabase.getRecentSearches(5, MaterialSearchView.this);
+                        moveToState(STATE_FOCUSED_EMPTY);
                     }
+                    moveCursorToEnd();
                 }
             }
         });
+    }
+
+    private void moveCursorToEnd() {
+        if (mSearchInputEditText != null) {
+            mSearchInputEditText.setSelection(getSearchTerm().length());
+        }
     }
 
     private void startVoiceSearch() {
@@ -199,8 +199,6 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
             int permissionStatus = ContextCompat.checkSelfPermission(mContext.get(), permission.RECORD_AUDIO);
             if (permissionStatus == PackageManager.PERMISSION_GRANTED) {
                 performVoiceSearch();
-            } else {
-
             }
         }
     }
@@ -216,21 +214,74 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
             SpeechRecognizer speechRecognizer = SpeechRecognizer.createSpeechRecognizer(mContext.get());
             speechRecognizer.setRecognitionListener(this);
             speechRecognizer.startListening(intent);
-        } else {
+        }
+    }
 
+    private boolean search(@NonNull String searchTerm) {
+        moveToState(STATE_UNFOCUSED_TEXT_PRESENT);
+        if (!TextUtils.isEmpty(searchTerm)) {
+            setSearchTerm(searchTerm);
+            SearchDatabase.addPerformedSearch(null, new PerformedSearch(searchTerm, String.valueOf(System.currentTimeMillis())));
+            if (mListeners != null) {
+                for (SearchViewListener listener : mListeners) {
+                    listener.onSearch(searchTerm);
+                }
+            }
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    private void setKeyboardActionListener() {
+        if (mSearchInputEditText != null) {
+            mSearchInputEditText.setOnEditorActionListener(mOnEditorActionListener);
+        }
+    }
+
+    private void clearKeyboardActionListener() {
+        if (mSearchInputEditText != null) {
+            mSearchInputEditText.setOnEditorActionListener(null);
+        }
+    }
+
+    private void setSearchTerm(@NonNull String searchTerm) {
+        if (mSearchInputEditText != null) {
+            mSearchInputEditText.removeTextChangedListener(mSearchTextChangedListener);
+            mSearchInputEditText.setText(searchTerm);
+            moveCursorToEnd();
+            mSearchInputEditText.addTextChangedListener(mSearchTextChangedListener);
+        }
+    }
+
+    private void showMic() {
+        if (mMicButton != null && mCancelButton != null) {
+            mMicButton.setVisibility(View.VISIBLE);
+            mCancelButton.setVisibility(View.GONE);
+        }
+    }
+
+    private void hideMic() {
+        if (mMicButton != null && mCancelButton != null) {
+            mMicButton.setVisibility(View.GONE);
+            mCancelButton.setVisibility(View.VISIBLE);
         }
     }
 
     private void clearSuggestions() {
-        if (mSearchInputEditText.hasFocus()) {
-            mRecentSearchesTask = SearchDatabase.getRecentSearches(5, MaterialSearchView.this);
-        } else {
-            if (mSuggestionsAdapter != null) {
-                mSuggestionsAdapter.setSuggestions(new ArrayList<PerformedSearch>());
-                adjustSuggestionsBoxHeight(0);
-            }
+        if (mSuggestionsAdapter != null) {
+            mSuggestionsAdapter.setSuggestions(new ArrayList<PerformedSearch>());
+            adjustSuggestionsBoxHeight(0);
         }
+    }
 
+    private void cancelSuggestions() {
+        if (mFilterRunnable != null) {
+            mHandler.removeCallbacks(mFilterRunnable);
+        }
+        if (mFilterSearchTask != null) {
+            mFilterSearchTask.cancel();
+        }
     }
 
     private void adjustSuggestionsBoxHeight(int numberOfRows) {
@@ -241,50 +292,8 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
         }
     }
 
-    private void resetSearch(boolean emptyText) {
-        if (emptyText) {
-            mSearchInputEditText.setText("");
-        }
-        showMic();
-    }
-
-    private boolean search(@NonNull String searchTerm) {
-        if (mSearchInputEditText != null) {
-            mSearchInputEditText.clearFocus();
-            mSearchInputEditText.removeTextChangedListener(mSearchTextChangedListener);
-            mSearchInputEditText.setText(searchTerm);
-            mSearchInputEditText.addTextChangedListener(mSearchTextChangedListener);
-        }
-        closeKeyboard();
-        if (!TextUtils.isEmpty(searchTerm)) {
-            SearchDatabase.addPerformedSearch(null, new PerformedSearch(searchTerm, String.valueOf(System.currentTimeMillis())));
-            if (mListeners != null) {
-                for (SearchViewListener listener : mListeners) {
-                    listener.onSearch(searchTerm);
-                }
-                showMic();
-            }
-            return true;
-        } else {
-            return false;
-        }
-    }
-
-    private void showMic() {
-        mMicButton.setVisibility(View.VISIBLE);
-        mCancelButton.setVisibility(View.GONE);
-        mMicVisible = true;
-    }
-
-    private void hideMic() {
-        mMicButton.setVisibility(View.GONE);
-        mCancelButton.setVisibility(View.VISIBLE);
-        mMicVisible = false;
-    }
-
     private void closeKeyboard() {
         if (mContext != null && mSearchInputEditText != null) {
-            clearSuggestions();
             InputMethodManager inputManager = (InputMethodManager)
                     mContext.get().getSystemService(Context.INPUT_METHOD_SERVICE);
             inputManager.hideSoftInputFromWindow(mSearchInputEditText.getWindowToken(),
@@ -292,24 +301,18 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
         }
     }
 
-    public void addListener(@NonNull SearchViewListener listener) {
-        if (mListeners != null) {
-            mListeners.add(listener);
-        }
+    private void showRecentSearches() {
+        mRecentSearchesTask = SearchDatabase.getRecentSearches(5, MaterialSearchView.this);
     }
 
-    public void removeListener(@NonNull SearchViewListener listener) {
-        if (mListeners != null) {
-            mListeners.remove(listener);
+    private void timedFilterSearchSuggestions(@NonNull String searchTerm) {
+        if (mFilterRunnable != null) {
+            mHandler.removeCallbacks(mFilterRunnable);
         }
+        mHandler.postDelayed(createFilterRunnable(searchTerm), TIME_SEARCH_AFTER_KEY_PRESS_DELAY);
     }
 
-    public void clearListeners() {
-        if (mListeners != null) {
-            mListeners.clear();
-        }
-    }
-
+    @NonNull
     private Runnable createFilterRunnable(@NonNull final String searchTerm) {
         mFilterRunnable = new Runnable() {
             @Override
@@ -317,10 +320,18 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
                 if (mFilterSearchTask != null) {
                     mFilterSearchTask.cancel();
                 }
-                mFilterSearchTask = SearchDatabase.filterSearchesBy(searchTerm, MaterialSearchView.this);
+                filterSearchSuggestions(searchTerm);
             }
         };
         return mFilterRunnable;
+    }
+
+    @NonNull
+    private String getSearchTerm() {
+        if (mSearchInputEditText != null) {
+            return mSearchInputEditText.getText().toString();
+        }
+        return "";
     }
 
     @Override
@@ -330,21 +341,87 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
         SearchDatabase.init(mContext.get());
     }
 
+    @SuppressWarnings("unused")
+    public void addListener(@NonNull SearchViewListener listener) {
+        if (mListeners != null) {
+            mListeners.add(listener);
+        }
+    }
+
+    @SuppressWarnings("unused")
+    public void removeListener(@NonNull SearchViewListener listener) {
+        if (mListeners != null) {
+            mListeners.remove(listener);
+        }
+    }
+
+    @SuppressWarnings("unused")
+    public void clearListeners() {
+        if (mListeners != null) {
+            mListeners.clear();
+        }
+    }
+
+    private void filterSearchSuggestions(@NonNull String searchTerm) {
+        mFilterSearchTask = SearchDatabase.filterSearchesBy(searchTerm, MaterialSearchView.this);
+    }
+
+    private void moveToState(@MaterialSearchViewState int state) {
+        switch (state) {
+            case STATE_FOCUSED_EMPTY:
+                cancelSuggestions();
+                emptySearchView();
+                setKeyboardActionListener();
+                showRecentSearches();
+                showMic();
+                break;
+            case STATE_FOCUSED_TEXT_PRESENT:
+                filterSearchSuggestions(getSearchTerm());
+                setKeyboardActionListener();
+                hideMic();
+                break;
+            case STATE_UNFOCUSED_TEXT_PRESENT:
+                cancelSuggestions();
+                clearSuggestions();
+                closeKeyboard();
+                clearKeyboardActionListener();
+                hideMic();
+                break;
+            case STATE_FOCUSED_TEXT_PRESENT_DELAY_SEARCH:
+                setKeyboardActionListener();
+                timedFilterSearchSuggestions(getSearchTerm());
+                hideMic();
+                break;
+            case STATE_DEFAULT:
+            default:
+                cancelSuggestions();
+                clearKeyboardActionListener();
+                closeKeyboard();
+                emptySearchView();
+                clearSuggestions();
+                showMic();
+                break;
+        }
+    }
+
+    private void emptySearchView() {
+        if (mSearchInputEditText != null) {
+            mSearchInputEditText.removeTextChangedListener(mSearchTextChangedListener);
+            mSearchInputEditText.setText("");
+            mSearchInputEditText.addTextChangedListener(mSearchTextChangedListener);
+        }
+    }
+
     @Override
     protected void onDetachedFromWindow() {
         super.onDetachedFromWindow();
         Log.d(TAG, ".onDetachedFromWindow()");
         SearchDatabase.destroy();
         mContext = null;
-        if (mFilterSearchTask != null) {
-            mFilterSearchTask.cancel();
-        }
         if (mRecentSearchesTask != null) {
             mRecentSearchesTask.cancel();
         }
-        if (mFilterRunnable != null) {
-            mHandler.removeCallbacks(mFilterRunnable);
-        }
+        cancelSuggestions();
         if (mListeners != null) {
             mListeners.clear();
             mListeners = null;
@@ -405,7 +482,7 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
 
     }
 
-    public class SuggestionsAdapter extends RecyclerView.Adapter<SuggestionViewHolder> {
+    private class SuggestionsAdapter extends RecyclerView.Adapter<SuggestionViewHolder> {
 
         @NonNull
         private ArrayList<PerformedSearch> mSuggestions = new ArrayList<>();
@@ -432,51 +509,67 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
             return mSuggestions.size();
         }
 
-        public void setSuggestions(@NonNull ArrayList<PerformedSearch> suggestions) {
+        void setSuggestions(@NonNull ArrayList<PerformedSearch> suggestions) {
             mSuggestions = suggestions;
             notifyDataSetChanged();
         }
     }
 
-    public class SuggestionViewHolder extends ViewHolder {
+    class SuggestionViewHolder extends ViewHolder {
         private final View mRootView;
         private TextView mSuggestionTextView;
         private View mDivider;
+        private String mSuggestion;
 
         private OnClickListener mOnClickListener = new OnClickListener() {
             @Override
             public void onClick(View view) {
-                if (mSuggestionTextView != null) {
-                    search(mSuggestionTextView.getText().toString());
-                }
+                search(mSuggestion);
             }
         };
 
-        public SuggestionViewHolder(View itemView) {
+        SuggestionViewHolder(View itemView) {
             super(itemView);
             mRootView = itemView;
             mSuggestionTextView = itemView.findViewById(R.id.list_item_suggestion);
             mDivider = itemView.findViewById(R.id.list_item_divider_line);
         }
 
-        public void bind(@NonNull String suggestion) {
+        void bind(@NonNull final String suggestion) {
+            mSuggestion = suggestion;
             mSuggestionTextView.setText(suggestion);
             mDivider.setVisibility(View.VISIBLE);
             mRootView.setOnClickListener(mOnClickListener);
         }
 
-        public void hideDivider() {
+        void hideDivider() {
             mDivider.setVisibility(View.GONE);
         }
     }
 
+    @Retention(SOURCE)
+    @IntDef({STATE_DEFAULT, STATE_FOCUSED_EMPTY, STATE_FOCUSED_TEXT_PRESENT,
+            STATE_FOCUSED_TEXT_PRESENT_DELAY_SEARCH, STATE_UNFOCUSED_TEXT_PRESENT})
+    private @interface MaterialSearchViewState {}
+
+    public static final int STATE_DEFAULT = 0;
+    public static final int STATE_FOCUSED_EMPTY = 1;
+    public static final int STATE_FOCUSED_TEXT_PRESENT = 2;
+    public static final int STATE_FOCUSED_TEXT_PRESENT_DELAY_SEARCH = 3;
+    public static final int STATE_UNFOCUSED_TEXT_PRESENT = 4;
+
+
     public interface SearchViewListener {
+        @SuppressWarnings("unused")
         void onSearch(@NonNull String searchTerm);
 
+        @SuppressWarnings("unused")
         void onVoiceSearchFailed(int error);
 
+        @SuppressWarnings("unused")
         void onVoiceSearchPermissionNeeded();
 
+        @SuppressWarnings("unused")
         void onVoiceSearchIncompatible();
     }
 }
