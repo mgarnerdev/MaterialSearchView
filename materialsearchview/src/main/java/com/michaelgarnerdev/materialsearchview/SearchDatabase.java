@@ -29,6 +29,7 @@ public class SearchDatabase extends SQLiteOpenHelper {
     public static final int DATABASE_VERSION = 1;
     private static final String DATABASE_NAME = "msv_searches.db";
     private static final String TEXT_TYPE = " TEXT";
+    private static final String REAL_TYPE = " REAL";
     private static final String COMMA_SEP = ", ";
     private static final String SEARCHES_TABLE_NAME = "searches";
 
@@ -86,7 +87,7 @@ public class SearchDatabase extends SQLiteOpenHelper {
             "CREATE TABLE " + SEARCHES_TABLE_NAME + " (" +
                     COLUMN_NAME_ID + " INTEGER PRIMARY KEY," +
                     COLUMN_NAME_SEARCH_TERM + TEXT_TYPE + COMMA_SEP +
-                    COLUMN_NAME_SEARCH_DATE + TEXT_TYPE +
+                    COLUMN_NAME_SEARCH_DATE + REAL_TYPE +
                     ")";
 
     private static final String SQL_DELETE_ENTRIES =
@@ -135,17 +136,21 @@ public class SearchDatabase extends SQLiteOpenHelper {
         return database.insert(SearchDatabase.SEARCHES_TABLE_NAME, null, values) != -1;
     }
 
-    public static DatabaseTask filterSearchesBy(@NonNull String searchTerm,
-                                                @NonNull DatabaseReadSearchesListener listener) {
-        return new DatabaseTask(new GetPerformedSearchesStartingWithTask(searchTerm, listener));
+    public static GetPerformedSearchesStartingWithTask filterSearchesBy(@NonNull String searchTerm,
+                                                                        @NonNull DatabaseReadSearchesListener listener) {
+        GetPerformedSearchesStartingWithTask task = new GetPerformedSearchesStartingWithTask(searchTerm, listener);
+        task.execute();
+        return task;
     }
 
     public static void getPerformedSearches(@NonNull DatabaseReadSearchesListener listener) {
         new GetPerformedSearchesTask(listener).execute();
     }
 
-    public static DatabaseTask getRecentSearches(int limit, @NonNull DatabaseReadSearchesListener listener) {
-        return new DatabaseTask(new GetRecentSearchesTask(limit, listener));
+    public static GetRecentSearchesTask getRecentSearches(int limit, @NonNull DatabaseReadSearchesListener listener) {
+        GetRecentSearchesTask task = new GetRecentSearchesTask(limit, listener);
+        task.execute();
+        return task;
     }
 
     private static PerformedSearch cursorToPerformedSearch(Cursor cursor) {
@@ -202,7 +207,7 @@ public class SearchDatabase extends SQLiteOpenHelper {
         }
     }
 
-    private static class GetPerformedSearchesTask extends AsyncTask<Void, Void, ArrayList<PerformedSearch>> {
+    public static class GetPerformedSearchesTask extends AsyncTask<Void, Void, ArrayList<PerformedSearch>> {
         private DatabaseReadSearchesListener mListener = null;
 
         private GetPerformedSearchesTask(@Nullable DatabaseReadSearchesListener listener) {
@@ -247,7 +252,7 @@ public class SearchDatabase extends SQLiteOpenHelper {
         }
     }
 
-    private static class GetPerformedSearchesStartingWithTask extends AsyncTask<Void, Void, ArrayList<PerformedSearch>> {
+    public static class GetPerformedSearchesStartingWithTask extends AsyncTask<Void, Void, ArrayList<PerformedSearch>> {
         private final String mStartsWith;
         private DatabaseReadSearchesListener mListener = null;
 
@@ -295,13 +300,13 @@ public class SearchDatabase extends SQLiteOpenHelper {
             }
         }
 
-        private void cancel() {
+        public void cancel() {
             mListener = null;
             cancel(true);
         }
     }
 
-    private static class GetRecentSearchesTask extends AsyncTask<Void, Void, ArrayList<PerformedSearch>> {
+    public static class GetRecentSearchesTask extends AsyncTask<Void, Void, ArrayList<PerformedSearch>> {
 
         private int mLimit = DEFAULT_LIMIT;
         private DatabaseReadSearchesListener mListener = null;
@@ -316,8 +321,10 @@ public class SearchDatabase extends SQLiteOpenHelper {
             ArrayList<PerformedSearch> performedSearches = new ArrayList<>();
             SQLiteDatabase readableDatabase = readDatabase();
             if (readableDatabase != null) {
-                Cursor cursor = readableDatabase.query(true, SearchDatabase.SEARCHES_TABLE_NAME,
-                        sSearchesTableAllColumns, null, null, null, null, COLUMN_NAME_SEARCH_DATE + " DESC", null);
+                String query = "SELECT * FROM "
+                        + SEARCHES_TABLE_NAME
+                        + " ORDER BY " + COLUMN_NAME_SEARCH_DATE + " ASC LIMIT " + DEFAULT_LIMIT;
+                Cursor cursor = readableDatabase.rawQuery(query, null);
                 if (cursor != null) {
                     cursor.moveToFirst();
                     while (!cursor.isAfterLast()) {
@@ -343,7 +350,7 @@ public class SearchDatabase extends SQLiteOpenHelper {
             }
         }
 
-        private void cancel() {
+        public void cancel() {
             mListener = null;
             cancel(true);
         }
@@ -391,21 +398,5 @@ public class SearchDatabase extends SQLiteOpenHelper {
     @SuppressWarnings("WeakerAccess")
     public interface DatabaseReadSearchesListener {
         void onComplete(@NonNull ArrayList<PerformedSearch> searches);
-    }
-
-    public static class DatabaseTask {
-        private final AsyncTask<Void, ?, ?> mTask;
-
-        @SuppressWarnings("unchecked")
-        public DatabaseTask(AsyncTask<Void, ?, ?> asyncTask) {
-            mTask = asyncTask;
-            mTask.execute();
-        }
-
-        public void cancel() {
-            if (mTask != null) {
-                mTask.cancel(true);
-            }
-        }
     }
 }

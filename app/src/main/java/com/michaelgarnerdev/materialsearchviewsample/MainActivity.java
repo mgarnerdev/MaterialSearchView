@@ -1,5 +1,7 @@
 package com.michaelgarnerdev.materialsearchviewsample;
 
+import android.os.Build.VERSION;
+import android.os.Build.VERSION_CODES;
 import android.os.Bundle;
 import android.support.annotation.NonNull;
 import android.support.design.widget.Snackbar;
@@ -14,14 +16,36 @@ public class MainActivity extends AppCompatActivity implements SearchViewListene
 
     private static final String TAG = MainActivity.class.getSimpleName();
     private LinearLayout mRootLayout;
+    private MaterialSearchView mMaterialSearchView;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         mRootLayout = findViewById(R.id.root_view);
-        MaterialSearchView materialSearchView = mRootLayout.findViewById(R.id.material_search_view);
-        materialSearchView.addListener(this);
+        mMaterialSearchView = mRootLayout.findViewById(R.id.material_search_view);
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        mMaterialSearchView.addListener(this);
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        if (mMaterialSearchView != null && VERSION.SDK_INT >= VERSION_CODES.M) {
+            mMaterialSearchView.removeListener(this);
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        if (mMaterialSearchView != null && VERSION.SDK_INT < VERSION_CODES.M) {
+            mMaterialSearchView.removeListener(this);
+        }
     }
 
     @Override

@@ -1,7 +1,7 @@
 package com.michaelgarnerdev.materialsearchview;
 
 import android.content.Context;
-import android.os.Build.VERSION;
+import android.content.res.Resources;
 import android.os.Build.VERSION_CODES;
 import android.os.Handler;
 import android.support.annotation.NonNull;
@@ -15,6 +15,7 @@ import android.text.TextUtils;
 import android.text.TextWatcher;
 import android.util.AttributeSet;
 import android.util.Log;
+import android.util.TypedValue;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -22,13 +23,15 @@ import android.view.ViewGroup;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.TextView.OnEditorActionListener;
 
 import com.michaelgarnerdev.materialsearchview.SearchDatabase.DatabaseReadSearchesListener;
-import com.michaelgarnerdev.materialsearchview.SearchDatabase.DatabaseTask;
+import com.michaelgarnerdev.materialsearchview.SearchDatabase.GetPerformedSearchesStartingWithTask;
+import com.michaelgarnerdev.materialsearchview.SearchDatabase.GetRecentSearchesTask;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
@@ -41,7 +44,7 @@ import java.util.ArrayList;
 public class MaterialSearchView extends LinearLayout implements DatabaseReadSearchesListener {
     private static final String TAG = MaterialSearchView.class.getSimpleName();
 
-    private static final long TIME_SEARCH_AFTER_KEY_PRESS_DELAY = 200;
+    private static final long TIME_SEARCH_AFTER_KEY_PRESS_DELAY = 300;
 
 
     private WeakReference<Context> mContext;
@@ -53,12 +56,13 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
     private Handler mHandler = new Handler();
 
     private boolean mMicVisible = true;
-    private DatabaseTask mFilterSearchTask;
-    private DatabaseTask mRecentSearchesTask;
+    private GetPerformedSearchesStartingWithTask mFilterSearchTask;
+    private GetRecentSearchesTask mRecentSearchesTask;
     private Runnable mFilterRunnable;
     private RecyclerView mSuggestionsRecyclerView;
     private SuggestionsAdapter mSuggestionsAdapter;
     private ArrayList<SearchViewListener> mListeners = new ArrayList<>();
+    private float mSuggestionRowHeight = 0;
 
     public MaterialSearchView(Context context) {
         this(context, null);
@@ -81,6 +85,9 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
 
     private void init(@NonNull Context context) {
         mContext = new WeakReference<>(context);
+        Resources resources = mContext.get().getResources();
+        mSuggestionRowHeight = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 48, resources.getDisplayMetrics());
+        Log.d(TAG, "ROW HEIGHT: " + mSuggestionRowHeight);
     }
 
     @Override
@@ -124,9 +131,7 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
                     }
                     mHandler.postDelayed(createFilterRunnable(charSequence.toString()), TIME_SEARCH_AFTER_KEY_PRESS_DELAY);
                     if (mMicVisible) {
-                        mMicVisible = false;
-                        mMicButton.setVisibility(View.GONE);
-                        mCancelButton.setVisibility(View.VISIBLE);
+                        hideMic();
                     }
                 } else {
                     resetSearch(false);
@@ -153,7 +158,7 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
                             for (SearchViewListener listener : mListeners) {
                                 listener.onSearch(searchTerm);
                             }
-                            resetSearch(true);
+                            showMic();
                         }
                         return true;
                     } else {
@@ -163,15 +168,73 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
                 return false;
             }
         });
+
+        mSearchInputEditText.setOnFocusChangeListener(new OnFocusChangeListener() {
+            @Override
+            public void onFocusChange(View view, boolean focused) {
+                if (!focused) {
+                    //collapseSuggestions();
+                }
+            }
+        });
+
+        mSearchInputEditText.setOnClickListener(new OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                mRecentSearchesTask = SearchDatabase.getRecentSearches(5, MaterialSearchView.this);
+            }
+        });
+    }
+
+    private void adjustSuggestionsBoxHeight(int numberOfRows) {
+        if (mSuggestionsRecyclerView != null && mSuggestionRowHeight > 0) {
+            FrameLayout.LayoutParams params = (FrameLayout.LayoutParams) mSuggestionsRecyclerView.getLayoutParams();
+            params.height = (int) (numberOfRows * mSuggestionRowHeight);
+            mSuggestionsRecyclerView.setLayoutParams(params);
+        }
+    }
+
+    private void expandSuggestions(int numberOfRows) {
+        if (mSuggestionsRecyclerView != null) {
+            int currentHeight = mSuggestionsRecyclerView.getHeight();
+            int targetHeight = (int) (numberOfRows * mSuggestionRowHeight);
+            Log.d(TAG, ".expandSuggestions(" + numberOfRows + ") - CURRENT_HEIGHT = '" + currentHeight + "'");
+            Log.d(TAG, ".expandSuggestions(" + numberOfRows + ") - TARGET_HEIGHT = '" + targetHeight + "'");
+            mSuggestionsRecyclerView.animate()
+                    .yBy(targetHeight - currentHeight)
+                    .setDuration(300)
+                    .start();
+        }
+    }
+
+    private void collapseSuggestions() {
+        if (mSuggestionsRecyclerView != null) {
+            int currentHeight = mSuggestionsRecyclerView.getHeight();
+            int targetHeight = 0;
+            mSuggestionsRecyclerView.animate()
+                    .yBy(targetHeight - currentHeight)
+                    .setDuration(300)
+                    .start();
+        }
     }
 
     private void resetSearch(boolean emptyText) {
         if (emptyText) {
             mSearchInputEditText.setText("");
         }
+        showMic();
+    }
+
+    private void showMic() {
         mMicButton.setVisibility(View.VISIBLE);
         mCancelButton.setVisibility(View.GONE);
         mMicVisible = true;
+    }
+
+    private void hideMic() {
+        mMicButton.setVisibility(View.GONE);
+        mCancelButton.setVisibility(View.VISIBLE);
+        mMicVisible = false;
     }
 
     private void closeKeyboard() {
@@ -219,7 +282,6 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
         super.onAttachedToWindow();
         Log.d(TAG, ".onAttachedToWindow()");
         SearchDatabase.init(mContext.get());
-        mRecentSearchesTask = SearchDatabase.getRecentSearches(5, MaterialSearchView.this);
     }
 
     @Override
@@ -245,12 +307,10 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
 
     @Override
     public void onComplete(@NonNull ArrayList<PerformedSearch> searches) {
-        if (VERSION.SDK_INT >= VERSION_CODES.KITKAT) {
-            if (!isAttachedToWindow()) {
-                if (mSuggestionsAdapter != null) {
-                    mSuggestionsAdapter.setSuggestions(searches);
-                }
-            }
+        if (mSuggestionsAdapter != null) {
+            mSuggestionsAdapter.setSuggestions(searches);
+            //expandSuggestions(searches.size());
+            adjustSuggestionsBoxHeight(searches.size());
         }
     }
 
@@ -270,6 +330,9 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
         public void onBindViewHolder(SuggestionViewHolder holder, int position) {
             if (position < mSuggestions.size()) {
                 holder.bind(mSuggestions.get(position).getSearchTerm());
+                if (position == mSuggestions.size() - 1) {
+                    holder.hideDivider();
+                }
             }
         }
 
@@ -282,18 +345,26 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
             mSuggestions = suggestions;
             notifyDataSetChanged();
         }
+
     }
 
     public class SuggestionViewHolder extends ViewHolder {
         private TextView mSuggestionTextView;
+        private View mDivider;
 
         public SuggestionViewHolder(View itemView) {
             super(itemView);
             mSuggestionTextView = itemView.findViewById(R.id.list_item_suggestion);
+            mDivider = itemView.findViewById(R.id.list_item_divider_line);
         }
 
         public void bind(@NonNull String suggestion) {
             mSuggestionTextView.setText(suggestion);
+            mDivider.setVisibility(View.VISIBLE);
+        }
+
+        public void hideDivider() {
+            mDivider.setVisibility(View.GONE);
         }
     }
 

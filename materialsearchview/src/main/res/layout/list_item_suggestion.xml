@@ -53,6 +53,7 @@
         </LinearLayout>
 
         <View
+            android:id="@+id/list_item_divider_line"
             android:layout_width="match_parent"
             android:layout_height="1dp"
             android:layout_gravity="bottom"
