@@ -10,9 +10,9 @@ import android.util.Log;
 import android.widget.LinearLayout;
 
 import com.michaelgarnerdev.materialsearchview.MaterialSearchView;
-import com.michaelgarnerdev.materialsearchview.MaterialSearchView.SearchViewListener;
+import com.michaelgarnerdev.materialsearchview.MaterialSearchView.SearchViewSearchListener;
 
-public class MainActivity extends AppCompatActivity implements SearchViewListener {
+public class MainActivity extends AppCompatActivity implements SearchViewSearchListener {
 
     private static final String TAG = MainActivity.class.getSimpleName();
     private LinearLayout mRootLayout;
@@ -49,23 +49,17 @@ public class MainActivity extends AppCompatActivity implements SearchViewListene
     }
 
     @Override
+    public void onBackPressed() {
+        if (mMaterialSearchView != null) {
+            if (!mMaterialSearchView.onBackPressed()) {
+                super.onBackPressed();
+            }
+        }
+    }
+
+    @Override
     public void onSearch(@NonNull String searchTerm) {
         Log.d(TAG, "SEARCH TERM: " + searchTerm);
         Snackbar.make(mRootLayout, searchTerm, Snackbar.LENGTH_SHORT).show();
-    }
-
-    @Override
-    public void onVoiceSearchFailed(int error) {
-
-    }
-
-    @Override
-    public void onVoiceSearchPermissionNeeded() {
-
-    }
-
-    @Override
-    public void onVoiceSearchIncompatible() {
-
     }
 }

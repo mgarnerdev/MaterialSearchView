@@ -8,37 +8,37 @@ import android.support.annotation.NonNull;
  * Created by mgarner on 7/29/2017.
  */
 
-public class PerformedSearch implements Parcelable {
+public class SearchSuggestion implements Parcelable {
 
     @NonNull
     private String mSearchTerm = "";
     @NonNull
     private String mDate = "";
 
-    public PerformedSearch() {
+    public SearchSuggestion() {
 
     }
 
-    public PerformedSearch(@NonNull String searchTerm,
-                           @NonNull String date) {
+    public SearchSuggestion(@NonNull String searchTerm,
+                            @NonNull String date) {
         this.mSearchTerm = searchTerm;
         this.mDate = date;
     }
 
-    protected PerformedSearch(Parcel in) {
+    protected SearchSuggestion(Parcel in) {
         mSearchTerm = in.readString();
         mDate = in.readString();
     }
 
-    public static final Creator<PerformedSearch> CREATOR = new Creator<PerformedSearch>() {
+    public static final Creator<SearchSuggestion> CREATOR = new Creator<SearchSuggestion>() {
         @Override
-        public PerformedSearch createFromParcel(Parcel in) {
-            return new PerformedSearch(in);
+        public SearchSuggestion createFromParcel(Parcel in) {
+            return new SearchSuggestion(in);
         }
 
         @Override
-        public PerformedSearch[] newArray(int size) {
-            return new PerformedSearch[size];
+        public SearchSuggestion[] newArray(int size) {
+            return new SearchSuggestion[size];
         }
     };
 
