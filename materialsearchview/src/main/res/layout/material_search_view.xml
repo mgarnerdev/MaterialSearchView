@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout
+    android:id="@+id/msv_root_view"
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
@@ -22,6 +23,7 @@
         tools:targetApi="lollipop">
 
         <ImageView
+            android:id="@+id/msv_search_card_input_icon"
             android:layout_width="@dimen/row_height"
             android:layout_height="@dimen/row_height"
             android:contentDescription="@string/cd_search_button"
