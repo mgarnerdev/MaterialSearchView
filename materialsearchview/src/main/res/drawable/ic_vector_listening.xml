@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="13dp"
+    android:height="13dp"
+    android:viewportHeight="13"
+    android:viewportWidth="13">
+    <path
+        android:name="circle_green"
+        android:fillColor="#337722"
+        android:pathData="M 1 6.5 C 1 6 1.5 5.5 2 5.5 C 2.5 5.5 3 6 3 6.5 C 3 7 2.5 7.5 2 7.5 C 1.5 7.5 1 7 1 6.5"/>
+    <path
+        android:name="circle_red"
+        android:fillColor="#FF3327"
+        android:pathData="M 4 6.5 C 4 6 4.5 5.5 5 5.5 C 5.5 5.5 6 6 6 6.5 C 6 7 5.5 7.5 5 7.5 C 4.5 7.5 4 7 4 6.5"/>
+    <path
+        android:name="circle_yellow"
+        android:fillColor="#FFBF00"
+        android:pathData="M 7 6.5 C 7 6 7.5 5.5 8 5.5 C 8.5 5.5 9 6 9 6.5 C 9 7 8.5 7.5 8 7.5 C 7.5 7.5 7 7 7 6.5"/>
+    <path
+        android:name="circle_blue"
+        android:fillColor="#0050BF"
+        android:pathData="M 10 6.5 C 10 6 10.5 5.5 11 5.5 C 11.5 5.5 12 6 12 6.5 C 12 7 11.5 7.5 11 7.5 C 10.5 7.5 10 7 10 6.5"/>
+</vector>

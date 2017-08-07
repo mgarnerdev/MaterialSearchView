@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <declare-styleable name="MaterialSearchView">
+        <attr name="databaseSuggestionsEnabled" format="boolean"/>
+        <attr name="maxSuggestionsPersisted" format="reference|integer"/>
+        <attr name="maxSuggestionsShown" format="reference|integer"/>
+        <attr name="voiceFeaturesEnabled" format="boolean"/>
+        <attr name="hintText" format="reference"/>
+        <attr name="text" format="reference|string"/>
+        <attr name="hintTextColor" format="reference"/>
+        <attr name="textColor" format="reference"/>
+        <attr name="mainIcon" format="reference"/>
+        <attr name="voiceIcon" format="reference"/>
+        <attr name="clearIcon" format="reference"/>
+        <attr name="background" format="reference"/>
+        <attr name="backgroundColor" format="reference"/>
+        <attr name="iconTintColor" format="reference"/>
+    </declare-styleable>
+</resources>

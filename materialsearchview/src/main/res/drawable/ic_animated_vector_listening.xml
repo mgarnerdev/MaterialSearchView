@@ -1,0 +1,18 @@
+<animated-vector
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:drawable="@drawable/ic_vector_listening"
+    tools:ignore="NewApi">
+    <target
+        android:name="circle_green"
+        android:animation="@animator/animator_circle_green"/>
+    <target
+        android:name="circle_red"
+        android:animation="@animator/animator_circle_red"/>
+    <target
+        android:name="circle_yellow"
+        android:animation="@animator/animator_circle_yellow"/>
+    <target
+        android:name="circle_blue"
+        android:animation="@animator/animator_circle_blue"/>
+</animated-vector>

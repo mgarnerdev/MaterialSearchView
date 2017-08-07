@@ -2,4 +2,7 @@
     <string name="lib_name">MaterialSearchView</string>
     <string name="material_search_view_input_hint">Search&#8230;</string>
     <string name="speech_prompt">Search for&#8230;</string>
+    <string name="voice_search_unavailable_title">Voice Search Unavailable</string>
+    <string name="voice_search_unavailable_message">Oops! Voice searching is not available on your device.</string>
+    <string name="material_search_view_voice_listening">Listening&#8230;</string>
 </resources>

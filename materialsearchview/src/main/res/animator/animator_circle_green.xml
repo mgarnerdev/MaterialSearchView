@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<set xmlns:android="http://schemas.android.com/apk/res/android"
+     xmlns:tools="http://schemas.android.com/tools">
+    <objectAnimator
+        android:duration="200"
+        android:interpolator="@android:interpolator/fast_out_slow_in"
+        android:propertyName="pathData"
+        android:valueFrom="M 1 6.5 C 1 6 1.5 5.5 2 5.5 C 2.5 5.5 3 6 3 6.5 L 3 6.5 C 3 7 2.5 7.5 2 7.5 C 1.5 7.5 1 7 1 6.5 L 1 6.5"
+        android:valueTo="M 1 6.5 C 1 6 1.5 5.5 2 5.5 C 2.5 5.5 3 6 3 6.5 L 3 8.5 C 3 9 2.5 9.5 2 9.5 C 1.5 9.5 1 9 1 8.5 L 1 6.5"
+        android:valueType="pathType"
+        tools:ignore="NewApi"/>
+    <objectAnimator
+        android:duration="200"
+        android:interpolator="@android:anim/anticipate_interpolator"
+        android:propertyName="pathData"
+        android:startOffset="200"
+        android:valueFrom="M 1 6.5 C 1 6 1.5 5.5 2 5.5 C 2.5 5.5 3 6 3 6.5 L 3 8.5 C 3 9 2.5 9.5 2 9.5 C 1.5 9.5 1 9 1 8.5 L 1 6.5"
+        android:valueTo="M 1 6.5 C 1 6 1.5 5.5 2 5.5 C 2.5 5.5 3 6 3 6.5 L 3 6.5 C 3 7 2.5 7.5 2 7.5 C 1.5 7.5 1 7 1 6.5 L 1 6.5"
+        android:valueType="pathType"/>
+    <objectAnimator
+        android:duration="200"
+        android:interpolator="@android:interpolator/linear_out_slow_in"
+        android:propertyName="pathData"
+        android:startOffset="400"
+        android:valueFrom="M 1 6.5 L 1 6.5 C 1 6 1.5 5.5 2 5.5 C 2.5 5.5 3 6 3 6.5 L 3 6.5 C 3 7 2.5 7.5 2 7.5 C 1.5 7.5 1 7 1 6.5"
+        android:valueTo="M 1 6.5 L 1 5.5 C 1 5 1.5 4.5 2 4.5 C 2.5 4.5 3 5 3 5.5 L 3 6.5 C 3 7 2.5 7.5 2 7.5 C 1.5 7.5 1 7 1 6.5"
+        android:valueType="pathType"
+        tools:ignore="NewApi"/>
+    <objectAnimator
+        android:duration="200"
+        android:interpolator="@android:interpolator/fast_out_linear_in"
+        android:propertyName="pathData"
+        android:startOffset="600"
+        android:valueFrom="M 1 6.5 L 1 5.5 C 1 5 1.5 4.5 2 4.5 C 2.5 4.5 3 5 3 5.5 L 3 6.5 C 3 7 2.5 7.5 2 7.5 C 1.5 7.5 1 7 1 6.5"
+        android:valueTo="M 1 6.5 L 1 6.5 C 1 6 1.5 5.5 2 5.5 C 2.5 5.5 3 6 3 6.5 L 3 6.5 C 3 7 2.5 7.5 2 7.5 C 1.5 7.5 1 7 1 6.5"
+        android:valueType="pathType"
+        tools:ignore="NewApi"/>
+</set>

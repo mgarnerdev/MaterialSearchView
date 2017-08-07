@@ -5,7 +5,9 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.res.Resources;
+import android.content.res.TypedArray;
 import android.graphics.Bitmap;
+import android.graphics.drawable.Animatable;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Build.VERSION;
@@ -19,6 +21,7 @@ import android.support.annotation.IntDef;
 import android.support.annotation.NonNull;
 import android.support.annotation.Nullable;
 import android.support.annotation.RequiresApi;
+import android.support.graphics.drawable.AnimatedVectorDrawableCompat;
 import android.support.v4.content.ContextCompat;
 import android.support.v4.graphics.drawable.DrawableCompat;
 import android.support.v7.widget.CardView;
@@ -56,6 +59,11 @@ import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 import java.util.Locale;
 
+import static com.michaelgarnerdev.materialsearchview.MaterialSearchView.SearchViewVoiceListener.VOICE_SEARCH_ERROR_MISSING_CONTEXT;
+import static com.michaelgarnerdev.materialsearchview.MaterialSearchView.SearchViewVoiceListener.VOICE_SEARCH_ERROR_NO_RESULTS;
+import static com.michaelgarnerdev.materialsearchview.MaterialSearchView.SearchViewVoiceListener.VOICE_SEARCH_ERROR_PERMISSION_DENIED;
+import static com.michaelgarnerdev.materialsearchview.MaterialSearchView.SearchViewVoiceListener.VOICE_SEARCH_ERROR_PERMISSION_NEEDED;
+import static com.michaelgarnerdev.materialsearchview.MaterialSearchView.SearchViewVoiceListener.VOICE_SEARCH_ERROR_UNAVAILABLE;
 import static java.lang.annotation.RetentionPolicy.SOURCE;
 
 /**
@@ -63,20 +71,31 @@ import static java.lang.annotation.RetentionPolicy.SOURCE;
  * MaterialSearchView helps you add material-themed searching to your app with ease.
  */
 
-public class MaterialSearchView extends LinearLayout implements DatabaseReadSearchesListener, RecognitionListener {
+public class MaterialSearchView extends LinearLayout implements
+        DatabaseReadSearchesListener,
+        RecognitionListener {
     private static final String TAG = MaterialSearchView.class.getSimpleName();
 
+    public static final int REQUEST_CODE_PERMISSION_RECORD_AUDIO = 777;
+
     private static final long TIME_SEARCH_AFTER_KEY_PRESS_DELAY = 300;
-    private static final int DEFAULT_SUGGESTIONS_LIMIT = 5;
-    private static final int DEFAULT_MAX_SUGGESTIONS = 1000;
+
+    private static final boolean DEFAULT_DATABASE_SUGGESTIONS_ENABLED = true;
+    private static final int DEFAULT_MAX_SUGGESTIONS_SHOWN = 5;
+    private static final int DEFAULT_MAX_SUGGESTIONS_PERSISTED = 1000;
+    private static final boolean DEFAULT_VOICE_FEATURES_ENABLED = VERSION.SDK_INT < VERSION_CODES.M;
 
     private WeakReference<Context> mContext;
 
     private CardView mSearchCard;
     private ImageView mSearchIcon;
     private EditText mSearchInputEditText;
-    private ImageButton mMicButton;
+    private ImageButton mVoiceButton;
     private ImageButton mClearButton;
+
+    private CardView mVoiceSearchCard;
+    private TextView mVoiceSearchListeningPrompt;
+    private TextView mVoiceSearchListeningRealTimeText;
 
     private Handler mHandler = new Handler();
 
@@ -94,13 +113,27 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
     private TextWatcher mSearchTextChangedListener;
     private OnEditorActionListener mOnEditorActionListener;
 
-    private int mSearchSuggestionsLimit = DEFAULT_SUGGESTIONS_LIMIT;
-    private boolean mDatabaseSuggestionsEnabled = true;
-    private boolean mVoiceFeaturesEnabled = true;
+    private int mMaxSuggestionsPersisted = DEFAULT_MAX_SUGGESTIONS_PERSISTED;
+    private int mMaxSuggestionsShown = DEFAULT_MAX_SUGGESTIONS_SHOWN;
+    private boolean mDatabaseSuggestionsEnabled = DEFAULT_DATABASE_SUGGESTIONS_ENABLED;
+    private boolean mVoiceFeaturesEnabled = DEFAULT_VOICE_FEATURES_ENABLED;
+    private String mHintText = null;
+    private String mText = null;
+    private Integer mTextColor = null;
+    private Integer mHintTextColor = null;
+    private Drawable mMainIcon;
+    private Drawable mVoiceIcon;
+    private Drawable mClearIcon;
+    private Drawable mBackground = null;
+    private Integer mBackgroundColor = null;
+    private Integer mIconTintColor = null;
     private boolean mHideMicIcon = false;
     private boolean mHideClearIcon = false;
-    private int mSuggestionsResolvedTintColor;
-    private int mMaxSuggestions = DEFAULT_MAX_SUGGESTIONS;
+    private SpeechRecognizer mSpeechRecognizer;
+    private AnimatedVectorDrawableCompat mAnimatedVoiceListenerDrawable;
+    private AnimatedVectorDrawableWrapper mAnimatedVoiceListenerDrawableWrapper;
+    private long mAnimatedVoiceListenerDuration;
+    private boolean mVoiceResultsAvailable = false;
 
 
     public MaterialSearchView(Context context) {
@@ -113,46 +146,126 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
 
     public MaterialSearchView(Context context, @Nullable AttributeSet attrs, int defStyleAttr) {
         super(context, attrs, defStyleAttr);
-        init(context);
+        init(context, attrs, defStyleAttr, 0);
     }
 
     @RequiresApi(api = VERSION_CODES.LOLLIPOP)
     @SuppressWarnings("unused")
     public MaterialSearchView(Context context, @Nullable AttributeSet attrs, int defStyleAttr, int defStyleRes) {
         super(context, attrs, defStyleAttr, defStyleRes);
-        init(context);
+        init(context, attrs, defStyleAttr, defStyleRes);
     }
 
-    private void init(@NonNull Context context) {
+    private void init(@NonNull Context context,
+                      @Nullable AttributeSet attrs,
+                      int defStyle,
+                      int defStyleRes) {
         mContext = new WeakReference<>(context);
-        Resources resources = mContext.get().getResources();
+        Resources resources = context.getResources();
         mSuggestionRowHeight = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 48, resources.getDisplayMetrics());
-        mSuggestionsResolvedTintColor = ContextCompat.getColor(mContext.get(), R.color.secondaryText);
-        Log.d(TAG, "ROW HEIGHT: " + mSuggestionRowHeight);
+        mIconTintColor = ContextCompat.getColor(context, R.color.primary_text);
+        mHintTextColor = ContextCompat.getColor(context, R.color.secondary_text);
+        mAnimatedVoiceListenerDrawable = AnimatedVectorDrawableCompat.create(
+                context,
+                R.drawable.ic_animated_vector_listening
+        );
+        mAnimatedVoiceListenerDuration = context.getResources()
+                .getInteger(R.integer.voice_listener_animation_duration);
+        TypedArray typedArray = context.obtainStyledAttributes(
+                attrs,
+                R.styleable.MaterialSearchView,
+                defStyle,
+                defStyleRes);
+        if (typedArray != null) {
+            try {
+                mDatabaseSuggestionsEnabled = typedArray.getBoolean(
+                        R.styleable.MaterialSearchView_databaseSuggestionsEnabled,
+                        DEFAULT_DATABASE_SUGGESTIONS_ENABLED
+                );
+                mMaxSuggestionsPersisted = typedArray.getInt(
+                        R.styleable.MaterialSearchView_maxSuggestionsPersisted,
+                        DEFAULT_MAX_SUGGESTIONS_PERSISTED
+                );
+                mMaxSuggestionsShown = typedArray.getInt(
+                        R.styleable.MaterialSearchView_maxSuggestionsShown,
+                        DEFAULT_MAX_SUGGESTIONS_SHOWN
+                );
+                mVoiceFeaturesEnabled = typedArray.getBoolean(
+                        R.styleable.MaterialSearchView_voiceFeaturesEnabled,
+                        DEFAULT_VOICE_FEATURES_ENABLED
+                );
+                mMainIcon = typedArray.getDrawable(R.styleable.MaterialSearchView_mainIcon);
+                mVoiceIcon = typedArray.getDrawable(R.styleable.MaterialSearchView_voiceIcon);
+                mClearIcon = typedArray.getDrawable(R.styleable.MaterialSearchView_clearIcon);
+                mBackground = typedArray.getDrawable(R.styleable.MaterialSearchView_background);
+
+                if (typedArray.hasValue(R.styleable.MaterialSearchView_hintText)) {
+                    mHintText = typedArray.getString(R.styleable.MaterialSearchView_hintText);
+                }
+                if (typedArray.hasValue(R.styleable.MaterialSearchView_text)) {
+                    mText = typedArray.getString(R.styleable.MaterialSearchView_text);
+                }
+                if (typedArray.hasValue(R.styleable.MaterialSearchView_hintTextColor)) {
+                    mHintTextColor = typedArray.getColor(R.styleable.MaterialSearchView_hintTextColor, mHintTextColor);
+                }
+                if (typedArray.hasValue(R.styleable.MaterialSearchView_textColor)) {
+                    if (mTextColor == null) {
+                        mTextColor = mIconTintColor;
+                    }
+                    mTextColor = typedArray.getColor(R.styleable.MaterialSearchView_textColor, mTextColor);
+                }
+                if (typedArray.hasValue(R.styleable.MaterialSearchView_backgroundColor)) {
+                    if (mBackgroundColor == null) {
+                        mBackgroundColor = ContextCompat.getColor(context, android.R.color.white);
+                    }
+                    mBackgroundColor = typedArray.getColor(R.styleable.MaterialSearchView_backgroundColor, mBackgroundColor);
+                }
+                if (typedArray.hasValue(R.styleable.MaterialSearchView_iconTintColor)) {
+                    mIconTintColor = typedArray.getColor(R.styleable.MaterialSearchView_iconTintColor, mIconTintColor);
+                }
+            } finally {
+                typedArray.recycle();
+            }
+        }
     }
 
     @Override
     protected void onFinishInflate() {
         super.onFinishInflate();
         Log.d(TAG, ".onFinishInflate()");
-        inflate(mContext.get(), R.layout.material_search_view, this);
-        setupView();
+        if (mContext != null) {
+            Context context = mContext.get();
+            if (context != null) {
+                inflate(context, R.layout.material_search_view, this);
+                setupView(context);
+            }
+        }
     }
 
-    private void setupView() {
+    private void setupView(@NonNull Context context) {
         mSearchCard = findViewById(R.id.msv_search_card);
         mSearchIcon = findViewById(R.id.msv_search_card_input_icon);
         mSearchInputEditText = findViewById(R.id.msv_search_card_input_edit_text);
-        mMicButton = findViewById(R.id.msv_search_card_input_microphone);
+        mVoiceButton = findViewById(R.id.msv_search_card_input_microphone);
         mClearButton = findViewById(R.id.msv_search_card_input_cancel);
 
-        mMicButton.setVisibility(mVoiceFeaturesEnabled && !mHideMicIcon ? View.VISIBLE : View.GONE);
-        mClearButton.setVisibility(mVoiceFeaturesEnabled ? View.GONE : View.VISIBLE);
+        mVoiceSearchCard = findViewById(R.id.msv_voice_search_card);
+        ImageView voiceSearchImageView = findViewById(R.id.msv_voice_search_image_view);
+        if (mAnimatedVoiceListenerDrawable != null) {
+            voiceSearchImageView.setImageDrawable(mAnimatedVoiceListenerDrawable);
+        }
+
+        mVoiceSearchListeningPrompt = findViewById(R.id.msv_voice_search_listening_prompt);
+        mVoiceSearchListeningRealTimeText = findViewById(R.id.msv_voice_search_listening_real_time_text);
+
+        mVoiceButton.setVisibility(mVoiceFeaturesEnabled && !mHideMicIcon ? View.VISIBLE : View.GONE);
 
         mSuggestionsRecyclerView = findViewById(R.id.msv_search_card_suggestions_recycler_view);
-        mSuggestionsRecyclerView.setLayoutManager(new LinearLayoutManager(mContext.get()));
+        mSuggestionsRecyclerView.setLayoutManager(new LinearLayoutManager(context));
         mSuggestionsAdapter = new SuggestionsAdapter();
         mSuggestionsRecyclerView.setAdapter(mSuggestionsAdapter);
+
+        setDefaultAttributes();
 
         mClearButton.setOnClickListener(new OnClickListener() {
             @Override
@@ -166,7 +279,7 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
             }
         });
 
-        mMicButton.setOnClickListener(new OnClickListener() {
+        mVoiceButton.setOnClickListener(new OnClickListener() {
             @Override
             public void onClick(View view) {
                 if (mInteractionListeners != null) {
@@ -238,7 +351,96 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
         });
     }
 
+    private void setDefaultAttributes() {
+        if (mSearchInputEditText != null) {
+            if (!TextUtils.isEmpty(mHintText)) {
+                mSearchInputEditText.setHint(mHintText);
+            }
+            if (!TextUtils.isEmpty(mText)) {
+                mSearchInputEditText.setText(mText);
+            }
+            if (mHintTextColor != null) {
+                mSearchInputEditText.setHintTextColor(mHintTextColor);
+            }
+            if (mTextColor != null) {
+                mSearchInputEditText.setTextColor(mTextColor);
+            }
+        }
+
+        if (mSearchIcon != null && mMainIcon != null) {
+            mSearchIcon.setImageDrawable(mMainIcon);
+        }
+
+        if (mVoiceButton != null && mVoiceIcon != null) {
+            mVoiceButton.setImageDrawable(mVoiceIcon);
+        }
+
+        if (mClearButton != null && mClearIcon != null) {
+            mClearButton.setImageDrawable(mClearIcon);
+        }
+
+        if (mSearchCard != null && mBackground != null) {
+            mSearchCard.setBackground(mBackground);
+        }
+
+        if (mSearchCard != null && mBackgroundColor != null) {
+            mSearchCard.setBackgroundColor(mBackgroundColor);
+        }
+
+        setIconTintWithResolvedColor(mIconTintColor);
+    }
+
     ///////////////////Begin API///////////////////
+
+    /**
+     * Get the card view that surrounds the other views.
+     *
+     * @return The CardView.
+     */
+    @SuppressWarnings("unused")
+    @Nullable
+    public CardView getCardView() {
+        return mSearchCard;
+    }
+
+    /**
+     * Get the underlying search input edit text view.
+     *
+     * @return The search input EditText view.
+     */
+    @SuppressWarnings("unused")
+    @Nullable
+    public EditText getSearchInputEditText() {
+        return mSearchInputEditText;
+    }
+
+    /**
+     * Get the voice image button.
+     *
+     * @return The image button.
+     */
+    @Nullable
+    @SuppressWarnings("unused")
+    public ImageButton getVoiceImageButton() {
+        return mVoiceButton;
+    }
+
+    /**
+     * Get the clear text image button.
+     *
+     * @return The image button.
+     */
+    @SuppressWarnings("unused")
+    @Nullable
+    public ImageButton getClearButton() {
+        return mClearButton;
+    }
+
+    @Nullable
+    @SuppressWarnings("unused")
+    public ImageView getMainIcon() {
+        return mSearchIcon;
+    }
 
     /**
      * Enable or disable the database and search suggestions.
@@ -253,7 +455,12 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
         }
         if (enabled) {
             SearchDatabase.destroy();
-            SearchDatabase.init(mContext.get());
+            if (mContext != null) {
+                Context context = mContext.get();
+                if (context != null) {
+                    SearchDatabase.init(context);
+                }
+            }
         } else {
             cancelSuggestions();
             if (mSuggestionsAdapter != null) {
@@ -274,7 +481,7 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
      */
     @SuppressWarnings("unused")
     public void setMaximumSuggestions(int limit) {
-        mMaxSuggestions = limit;
+        mMaxSuggestionsPersisted = limit;
     }
 
     /**
@@ -284,12 +491,83 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
      *         The search term to be set for the view. Can be set to null to clear the view.
      */
     @SuppressWarnings("unused")
-    public void setSearchTerm(@Nullable String searchTerm) {
+    public void setSearchTerm(@Nullable CharSequence searchTerm) {
         if (mSearchInputEditText != null) {
             mSearchInputEditText.setText(searchTerm);
             hideMic();
         } else {
             showMic();
+        }
+    }
+
+    /**
+     * Set the hint text.
+     *
+     * @param text
+     *         The text.
+     */
+    @SuppressWarnings("unused")
+    public void setHintText(@Nullable CharSequence text) {
+        if (mSearchInputEditText != null) {
+            mSearchInputEditText.setHint(text);
+        }
+    }
+
+    /**
+     * Set the hint text with a String resource id.
+     *
+     * @param stringResId
+     *         The string resource id.
+     */
+    @SuppressWarnings("unused")
+    public void setHintText(int stringResId) {
+        if (mSearchInputEditText != null) {
+            mSearchInputEditText.setHint(stringResId);
+        }
+    }
+
+    /**
+     * Get the current hint text as a String.
+     *
+     * @return The hint text.
+     */
+    @SuppressWarnings("unused")
+    @Nullable
+    public String getHintTextString() {
+        CharSequence charSequence = getHintText();
+        return charSequence != null ? charSequence.toString() : null;
+    }
+
+    /**
+     * Get the hint text as a CharSequence.
+     *
+     * @return The hint text.
+     */
+    @SuppressWarnings("unused")
+    @Nullable
+    public CharSequence getHintText() {
+        if (mSearchInputEditText != null) {
+            return mSearchInputEditText.getHint();
+        }
+        return null;
+    }
+
+    /**
+     * Set the hint text color.
+     *
+     * @param colorResId
+     *         The color resource id.
+     */
+    @SuppressWarnings("unused")
+    public void setHintTextColor(int colorResId) {
+        if (mSearchInputEditText != null) {
+            if (mContext != null) {
+                Context context = mContext.get();
+                if (context != null) {
+                    int color = ContextCompat.getColor(context, colorResId);
+                    mSearchInputEditText.setHintTextColor(color);
+                }
+            }
         }
     }
 
@@ -313,7 +591,12 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
     @SuppressWarnings("unused")
     public void clearSearchHistory() {
         SearchDatabase.deleteDatabase(null);
-        SearchDatabase.init(mContext.get());
+        if (mContext != null) {
+            Context context = mContext.get();
+            if (context != null) {
+                SearchDatabase.init(context);
+            }
+        }
     }
 
     /**
@@ -325,7 +608,12 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
     @SuppressWarnings("unused")
     public void clearSearchHistory(@Nullable DatabaseTaskListener listener) {
         SearchDatabase.deleteDatabase(listener);
-        SearchDatabase.init(mContext.get());
+        if (mContext != null) {
+            Context context = mContext.get();
+            if (context != null) {
+                SearchDatabase.init(context);
+            }
+        }
     }
 
     /**
@@ -335,8 +623,8 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
      *         The limit of suggestions. Default is 5.
      */
     @SuppressWarnings("unused")
-    public void setSuggestionsLimit(int limit) {
-        mSearchSuggestionsLimit = limit;
+    public void setMaxSuggestionsShown(int limit) {
+        mMaxSuggestionsShown = limit;
     }
 
     /**
@@ -413,17 +701,6 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
     }
 
     /**
-     * Gets the voice image button.
-     *
-     * @return The image button.
-     */
-    @Nullable
-    @SuppressWarnings("unused")
-    public ImageButton getVoiceImageButton() {
-        return mMicButton;
-    }
-
-    /**
      * Sets the icon for the voice feature.
      *
      * @param drawableResId
@@ -431,8 +708,8 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
      */
     @SuppressWarnings("unused")
     public void setVoiceIcon(int drawableResId) {
-        if (mMicButton != null) {
-            mMicButton.setImageResource(drawableResId);
+        if (mVoiceButton != null) {
+            mVoiceButton.setImageResource(drawableResId);
         }
     }
 
@@ -444,8 +721,8 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
      */
     @SuppressWarnings("unused")
     public void setVoiceIcon(@Nullable Drawable drawable) {
-        if (mMicButton != null) {
-            mMicButton.setImageDrawable(drawable);
+        if (mVoiceButton != null) {
+            mVoiceButton.setImageDrawable(drawable);
         }
     }
 
@@ -457,8 +734,8 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
      */
     @SuppressWarnings("unused")
     public void setVoiceIcon(@Nullable Bitmap bitmap) {
-        if (mMicButton != null) {
-            mMicButton.setImageBitmap(bitmap);
+        if (mVoiceButton != null) {
+            mVoiceButton.setImageBitmap(bitmap);
         }
     }
 
@@ -470,8 +747,8 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
      */
     @SuppressWarnings("unused")
     public void setVoiceIcon(@Nullable Uri imageUri) {
-        if (mMicButton != null) {
-            mMicButton.setImageURI(imageUri);
+        if (mVoiceButton != null) {
+            mVoiceButton.setImageURI(imageUri);
         }
     }
 
@@ -480,21 +757,10 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
      */
     @SuppressWarnings("unused")
     public void hideVoiceIcon() {
-        if (mMicButton != null) {
-            mMicButton.setVisibility(View.GONE);
+        if (mVoiceButton != null) {
+            mVoiceButton.setVisibility(View.GONE);
             mHideMicIcon = true;
         }
-    }
-
-    /**
-     * Get the clear text image button.
-     *
-     * @return The image button.
-     */
-    @Nullable
-    @SuppressWarnings("unused")
-    public ImageButton getClearButton() {
-        return mClearButton;
     }
 
     /**
@@ -611,20 +877,6 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
     }
 
     /**
-     * Sets the color of the hint text.
-     *
-     * @param colorResId
-     *         The color for the hint text.
-     */
-    @SuppressWarnings("unused")
-    public void setHintColor(int colorResId) {
-        int resolvedColor = ContextCompat.getColor(mContext.get(), colorResId);
-        if (mSearchInputEditText != null) {
-            mSearchInputEditText.setHintTextColor(resolvedColor);
-        }
-    }
-
-    /**
      * Sets the text color of the MaterialSearchView.
      *
      * @param colorResId
@@ -632,9 +884,12 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
      */
     @SuppressWarnings("unused")
     public void setTextColor(int colorResId) {
-        int resolvedColor = ContextCompat.getColor(mContext.get(), colorResId);
-        if (mSearchInputEditText != null) {
-            mSearchInputEditText.setTextColor(resolvedColor);
+        if (mContext != null) {
+            Context context = mContext.get();
+            if (context != null && mSearchInputEditText != null) {
+                int resolvedColor = ContextCompat.getColor(context, colorResId);
+                mSearchInputEditText.setTextColor(resolvedColor);
+            }
         }
     }
 
@@ -646,17 +901,32 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
      */
     @SuppressWarnings("unused")
     public void setIconTint(int colorResId) {
-        int resolvedColor = ContextCompat.getColor(mContext.get(), colorResId);
+        if (mContext != null) {
+            Context context = mContext.get();
+            if (context != null) {
+                int resolvedColor = ContextCompat.getColor(context, colorResId);
+                setIconTintWithResolvedColor(resolvedColor);
+            }
+        }
+    }
+
+    /**
+     * Sets the color of the existing icon set with a resolved color.
+     *
+     * @param resolvedColor
+     *         The resolved color for the icons.
+     */
+    public void setIconTintWithResolvedColor(int resolvedColor) {
         if (mSearchIcon != null) {
             DrawableCompat.setTint(mSearchIcon.getDrawable(), resolvedColor);
         }
-        if (mMicButton != null) {
-            DrawableCompat.setTint(mMicButton.getDrawable(), resolvedColor);
+        if (mVoiceButton != null) {
+            DrawableCompat.setTint(mVoiceButton.getDrawable(), resolvedColor);
         }
         if (mClearButton != null) {
             DrawableCompat.setTint(mClearButton.getDrawable(), resolvedColor);
         }
-        mSuggestionsResolvedTintColor = resolvedColor;
+        mIconTintColor = resolvedColor;
         if (mSuggestionsAdapter != null) {
             mSuggestionsAdapter.notifyDataSetChanged();
         }
@@ -669,12 +939,12 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
      *         Suggestions to persist.
      */
     @SuppressWarnings("unused")
-    public void persistSuggestions(@NonNull String[] suggestions) {
+    public void persistSuggestions(@NonNull CharSequence[] suggestions) {
         if (mDatabaseSuggestionsEnabled) {
             ArrayList<SearchSuggestion> searchSuggestions = new ArrayList<>(suggestions.length);
             for (int i = 0; i < suggestions.length; i++) {
                 String currentTime = String.valueOf(System.currentTimeMillis() - 1000 * i);
-                searchSuggestions.add(new SearchSuggestion(suggestions[i], currentTime));
+                searchSuggestions.add(new SearchSuggestion(suggestions[i].toString(), currentTime));
             }
             SearchDatabase.addPerformedSearches(searchSuggestions, null);
         }
@@ -689,12 +959,12 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
      *         A listener for the completion of the persistence.
      */
     @SuppressWarnings("unused")
-    public void persistSuggestions(@NonNull String[] suggestions, @Nullable DatabaseTaskListener listener) {
+    public void persistSuggestions(@NonNull CharSequence[] suggestions, @Nullable DatabaseTaskListener listener) {
         if (mDatabaseSuggestionsEnabled) {
             ArrayList<SearchSuggestion> searchSuggestions = new ArrayList<>(suggestions.length);
             for (int i = 0; i < suggestions.length; i++) {
                 String currentTime = String.valueOf(System.currentTimeMillis() - 1000 * i);
-                searchSuggestions.add(new SearchSuggestion(suggestions[i], currentTime));
+                searchSuggestions.add(new SearchSuggestion(suggestions[i].toString(), currentTime));
             }
             SearchDatabase.addPerformedSearches(searchSuggestions, listener);
         }
@@ -707,13 +977,13 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
      *         Suggestions for the user.
      */
     @SuppressWarnings("unused")
-    public void setSuggestions(@Nullable String[] suggestions) {
+    public void setSuggestions(@Nullable CharSequence[] suggestions) {
         ArrayList<SearchSuggestion> searchSuggestions = new ArrayList<>();
         if (suggestions != null) {
             searchSuggestions = new ArrayList<>(suggestions.length);
             for (int i = 0; i < suggestions.length; i++) {
                 String currentTime = String.valueOf(System.currentTimeMillis() - 1000 * i);
-                searchSuggestions.add(new SearchSuggestion(suggestions[i], currentTime));
+                searchSuggestions.add(new SearchSuggestion(suggestions[i].toString(), currentTime));
             }
         }
         if (mSuggestionsAdapter != null) {
@@ -769,6 +1039,7 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
      *
      * @param listener
      *         The listener for the completion of the lookup.
+     *
      * @return The task so that it can be canceled if necessary.
      */
     @SuppressWarnings("unused")
@@ -784,6 +1055,7 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
      *         The maximum number of rows that should be returned.
      * @param listener
      *         The listener for the completion of the lookup.
+     *
      * @return The task so that it can be canceled if necessary.
      */
     @SuppressWarnings("unused")
@@ -910,6 +1182,8 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
         if (mVoiceListeners != null) {
             mVoiceListeners.add(listener);
         }
+        mVoiceFeaturesEnabled = true;
+        showMic();
     }
 
     /**
@@ -955,6 +1229,24 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
         return false;
     }
 
+    /**
+     * Closes the MaterialSearchView.
+     */
+    @SuppressWarnings("unused")
+    public void close() {
+        moveToState(STATE_DEFAULT);
+    }
+
+    /**
+     * Indicates whether the MaterialSearchView is open.
+     *
+     * @return True if open.
+     */
+    @SuppressWarnings("unused")
+    public boolean isOpen() {
+        return mCurrentState == STATE_DEFAULT;
+    }
+
     ///////////////////End API///////////////////
 
     private void moveCursorToEnd() {
@@ -965,25 +1257,65 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
 
     private void startVoiceSearch() {
         if (VERSION.SDK_INT >= VERSION_CODES.M) {
-            int permissionStatus = ContextCompat.checkSelfPermission(mContext.get(), permission.RECORD_AUDIO);
-            if (permissionStatus == PackageManager.PERMISSION_GRANTED) {
-                performVoiceSearch();
+            if (mContext != null) {
+                Context context = mContext.get();
+                if (context != null) {
+                    int permissionStatus = ContextCompat.checkSelfPermission(context, permission.RECORD_AUDIO);
+                    if (permissionStatus == PackageManager.PERMISSION_GRANTED) {
+                        performVoiceSearch();
+                    } else {
+                        for (SearchViewVoiceListener listener : mVoiceListeners) {
+                            listener.onVoiceSearchError(VOICE_SEARCH_ERROR_PERMISSION_NEEDED);
+                        }
+                    }
+                    return;
+                }
             }
+        } else {
+            performVoiceSearch();
+            return;
+        }
+        for (SearchViewVoiceListener listener : mVoiceListeners) {
+            listener.onVoiceSearchError(VOICE_SEARCH_ERROR_MISSING_CONTEXT);
         }
     }
 
     private void performVoiceSearch() {
-        if (SpeechRecognizer.isRecognitionAvailable(mContext.get())) {
-            Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                    RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
-            intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault());
-            intent.putExtra(RecognizerIntent.EXTRA_PROMPT,
-                    mContext.get().getString(R.string.speech_prompt));
-            SpeechRecognizer speechRecognizer = SpeechRecognizer.createSpeechRecognizer(mContext.get());
-            speechRecognizer.setRecognitionListener(this);
-            speechRecognizer.startListening(intent);
+        if (mContext != null) {
+            Context context = mContext.get();
+            if (context != null) {
+                if (mSpeechRecognizer == null) {
+                    if (SpeechRecognizer.isRecognitionAvailable(context)) {
+                        moveToState(STATE_VOICE_LISTENING);
+                        mSpeechRecognizer = SpeechRecognizer.createSpeechRecognizer(context);
+                        mSpeechRecognizer.setRecognitionListener(this);
+                        mSpeechRecognizer.startListening(createSpeechRecognizerIntent(context));
+                        return;
+                    }
+                    for (SearchViewVoiceListener listener : mVoiceListeners) {
+                        listener.onVoiceSearchError(VOICE_SEARCH_ERROR_UNAVAILABLE);
+                    }
+                } else {
+                    moveToState(STATE_VOICE_LISTENING);
+                    mSpeechRecognizer.setRecognitionListener(this);
+                    mSpeechRecognizer.startListening(createSpeechRecognizerIntent(context));
+                }
+                return;
+            }
         }
+        for (SearchViewVoiceListener listener : mVoiceListeners) {
+            listener.onVoiceSearchError(VOICE_SEARCH_ERROR_MISSING_CONTEXT);
+        }
+    }
+
+    private Intent createSpeechRecognizerIntent(@NonNull Context context) {
+        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
+                RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
+        intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault());
+        intent.putExtra(RecognizerIntent.EXTRA_PROMPT,
+                context.getString(R.string.speech_prompt));
+        return intent;
     }
 
     private boolean search(@NonNull String searchTerm) {
@@ -1030,17 +1362,27 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
         }
     }
 
+    private void showClear() {
+        if (mClearButton != null) {
+            mClearButton.setVisibility(mHideClearIcon ? View.GONE : View.VISIBLE);
+        }
+    }
+
     private void showMic() {
-        if (mMicButton != null && mClearButton != null) {
-            mMicButton.setVisibility(mHideMicIcon ? View.GONE : View.VISIBLE);
+        if (mVoiceButton != null && mVoiceFeaturesEnabled) {
+            mVoiceButton.setVisibility(mHideMicIcon ? View.GONE : View.VISIBLE);
+        }
+    }
+
+    private void hideClear() {
+        if (mClearButton != null) {
             mClearButton.setVisibility(View.GONE);
         }
     }
 
     private void hideMic() {
-        if (mMicButton != null && mClearButton != null) {
-            mMicButton.setVisibility(View.GONE);
-            mClearButton.setVisibility(mHideClearIcon ? View.GONE : View.VISIBLE);
+        if (mVoiceButton != null) {
+            mVoiceButton.setVisibility(View.GONE);
         }
     }
 
@@ -1070,23 +1412,26 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
 
     private void closeKeyboard() {
         if (mContext != null && mSearchInputEditText != null) {
-            InputMethodManager inputManager = (InputMethodManager)
-                    mContext.get().getSystemService(Context.INPUT_METHOD_SERVICE);
-            inputManager.hideSoftInputFromWindow(mSearchInputEditText.getWindowToken(),
-                    InputMethodManager.HIDE_NOT_ALWAYS);
+            Context context = mContext.get();
+            if (context != null) {
+                InputMethodManager inputManager = (InputMethodManager)
+                        mContext.get().getSystemService(Context.INPUT_METHOD_SERVICE);
+                inputManager.hideSoftInputFromWindow(mSearchInputEditText.getWindowToken(),
+                        InputMethodManager.HIDE_NOT_ALWAYS);
+            }
         }
     }
 
     private void showRecentSearches() {
         if (mDatabaseSuggestionsEnabled) {
-            int limit = Math.min(mSearchSuggestionsLimit, mMaxSuggestions);
+            int limit = Math.min(mMaxSuggestionsShown, mMaxSuggestionsPersisted);
             mRecentSearchesTask = SearchDatabase.getRecentSearches(limit, MaterialSearchView.this);
         }
     }
 
     private void filterSearchSuggestions(@NonNull String searchTerm) {
         if (mDatabaseSuggestionsEnabled) {
-            int limit = Math.min(mSearchSuggestionsLimit, mMaxSuggestions);
+            int limit = Math.min(mMaxSuggestionsShown, mMaxSuggestionsPersisted);
             mFilterSearchTask = SearchDatabase.filterSearchesBy(limit, searchTerm, MaterialSearchView.this);
         }
     }
@@ -1136,36 +1481,106 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
         return "";
     }
 
+    private void showListeningView() {
+        if (mVoiceSearchCard != null) {
+            mVoiceSearchCard.setVisibility(View.VISIBLE);
+        }
+        if (mSearchCard != null) {
+            mSearchCard.setVisibility(View.GONE);
+        }
+        startVoiceListeningAnimation();
+    }
+
+    private void showSearchView() {
+        if (mSearchCard != null) {
+            mSearchCard.setVisibility(View.VISIBLE);
+        }
+        if (mVoiceSearchCard != null) {
+            mVoiceSearchCard.setVisibility(View.GONE);
+        }
+        stopVoiceListeningAnimation();
+    }
+
+    private void stopVoiceRecognitionIfNecessary() {
+        if (mSpeechRecognizer != null) {
+            mSpeechRecognizer.stopListening();
+        }
+    }
+
+    private void startVoiceListeningAnimation() {
+        if (mAnimatedVoiceListenerDrawable != null) {
+            if (mAnimatedVoiceListenerDrawableWrapper == null) {
+                mAnimatedVoiceListenerDrawableWrapper = new AnimatedVectorDrawableWrapper(
+                        mAnimatedVoiceListenerDrawable,
+                        mAnimatedVoiceListenerDuration);
+            }
+            mAnimatedVoiceListenerDrawableWrapper.repeat();
+        }
+    }
+
+    private void stopVoiceListeningAnimation() {
+        if (mAnimatedVoiceListenerDrawableWrapper != null) {
+            mAnimatedVoiceListenerDrawableWrapper.stop();
+        }
+    }
+
+    private void destroyVoiceListeningAnimation() {
+        if (mAnimatedVoiceListenerDrawableWrapper != null) {
+            mAnimatedVoiceListenerDrawableWrapper.destroy();
+        }
+    }
+
     private void moveToState(@MaterialSearchViewState int state) {
+        Log.d(TAG, "moveToState(" + state + ")");
         if (mCurrentState != state) {
             mCurrentState = state;
+            Log.d(TAG, "newState = " + state);
             switch (state) {
                 case STATE_FOCUSED_EMPTY:
+                    stopVoiceRecognitionIfNecessary();
+                    showSearchView();
                     cancelSuggestions();
                     emptySearchView();
                     setKeyboardActionListener();
                     showRecentSearches();
                     showMic();
+                    hideClear();
                     break;
                 case STATE_FOCUSED_TEXT_PRESENT:
+                    stopVoiceRecognitionIfNecessary();
+                    showSearchView();
                     filterSearchSuggestions(getSearchText());
                     setKeyboardActionListener();
                     hideMic();
+                    showClear();
                     break;
                 case STATE_UNFOCUSED_TEXT_PRESENT:
+                    stopVoiceRecognitionIfNecessary();
+                    showSearchView();
                     cancelSuggestions();
                     clearSuggestions();
                     closeKeyboard();
                     clearKeyboardActionListener();
                     hideMic();
+                    showClear();
                     break;
                 case STATE_FOCUSED_TEXT_PRESENT_DELAY_SEARCH:
+                    stopVoiceRecognitionIfNecessary();
+                    showSearchView();
                     setKeyboardActionListener();
                     timedFilterSearchSuggestions(getSearchText());
                     hideMic();
+                    showClear();
+                    break;
+                case STATE_VOICE_LISTENING:
+                    cancelSuggestions();
+                    clearSuggestions();
+                    showListeningView();
                     break;
                 case STATE_DEFAULT:
                 default:
+                    stopVoiceRecognitionIfNecessary();
+                    showSearchView();
                     cancelSuggestions();
                     clearKeyboardActionListener();
                     closeKeyboard();
@@ -1173,8 +1588,11 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
                     emptySearchView();
                     clearSuggestions();
                     showMic();
+                    hideClear();
                     break;
             }
+        } else {
+            Log.d(TAG, "moveToState - Already Current State");
         }
     }
 
@@ -1182,8 +1600,21 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
         Log.d(TAG, ".onAttachedToWindow()");
+        restoreContextIfNeeded();
         if (mDatabaseSuggestionsEnabled) {
-            SearchDatabase.init(mContext.get());
+            if (mContext != null) {
+                Context context = mContext.get();
+                if (context != null) {
+                    SearchDatabase.init(context);
+                }
+            }
+        }
+    }
+
+    private void restoreContextIfNeeded() {
+        if ((mContext == null || mContext.get() == null) && mSearchCard != null) {
+            mContext = new WeakReference<>(mSearchCard.getContext());
+            Log.d(TAG, "CONTEXT RESTORED");
         }
     }
 
@@ -1215,20 +1646,26 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
     }
 
     private void destroyListeners() {
+        destroyVoiceListeningAnimation();
         mSearchListeners = null;
         mInteractionListeners = null;
         mVoiceListeners = null;
         mEventListeners = null;
+        if (mSpeechRecognizer != null) {
+            mSpeechRecognizer.stopListening();
+            mSpeechRecognizer.setRecognitionListener(null);
+        }
     }
 
     @Override
     public void onReadyForSpeech(Bundle bundle) {
-
+        Log.d(TAG, "onReadyForSpeech()");
     }
 
     @Override
     public void onBeginningOfSpeech() {
-
+        Log.d(TAG, "onBeginningOfSpeech()");
+        mVoiceResultsAvailable = false;
     }
 
     @Override
@@ -1243,27 +1680,77 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
 
     @Override
     public void onEndOfSpeech() {
-
+        Log.d(TAG, "onEndOfSpeech()");
+        if (!mVoiceResultsAvailable) {
+            for (SearchViewVoiceListener listener : mVoiceListeners) {
+                listener.onVoiceSearchError(VOICE_SEARCH_ERROR_NO_RESULTS);
+            }
+            moveToState(STATE_DEFAULT);
+        }
     }
 
     @Override
-    public void onError(int i) {
-
+    public void onError(int error) {
+        Log.d(TAG, "onError(" + error + ")");
+        for (SearchViewVoiceListener listener : mVoiceListeners) {
+            listener.onVoiceSearchError(error);
+        }
+        if (!mVoiceResultsAvailable) {
+            moveToState(STATE_DEFAULT);
+        }
     }
 
     @Override
     public void onResults(Bundle bundle) {
-
+        Log.d(TAG, "onResults(" + (bundle != null ? bundle.toString() : "null") + ")");
+        if (bundle != null) {
+            mVoiceResultsAvailable = true;
+            ArrayList<String> voiceSearchResults = bundle.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+            if (voiceSearchResults != null && voiceSearchResults.size() > 0) {
+                search(voiceSearchResults.get(0));
+            }
+        }
     }
 
     @Override
     public void onPartialResults(Bundle bundle) {
-
+        Log.d(TAG, "onPartialResults(" + (bundle != null ? bundle.toString() : "null") + ")");
+        if (bundle != null) {
+            ArrayList<String> voiceSearchResults = bundle.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION);
+            if (voiceSearchResults != null
+                    && voiceSearchResults.size() > 0
+                    && mVoiceSearchListeningRealTimeText != null) {
+                mVoiceSearchListeningRealTimeText.setVisibility(View.VISIBLE);
+                if (mVoiceSearchListeningPrompt != null) {
+                    mVoiceSearchListeningPrompt.setVisibility(View.GONE);
+                }
+                CharSequence realTimeText = mVoiceSearchListeningRealTimeText.getText();
+                String realTimeTextString = (realTimeText != null ? realTimeText : "")
+                        + voiceSearchResults.get(0);
+                mVoiceSearchListeningRealTimeText.setText(realTimeTextString);
+            }
+        }
     }
 
     @Override
     public void onEvent(int i, Bundle bundle) {
+        Log.d(TAG, "onEvent(" + i + ", " + (bundle != null ? bundle.toString() : null) + ")");
+    }
 
+    public void handlePermissionResult(int requestCode,
+                                       @Nullable String[] permissions,
+                                       int[] grantResults) {
+        if (requestCode == REQUEST_CODE_PERMISSION_RECORD_AUDIO
+                && grantResults.length > 0 && permissions != null && permissions.length > 0) {
+            if (grantResults[0] == PackageManager.PERMISSION_GRANTED
+                    && permission.RECORD_AUDIO.equals(permissions[0])) {
+                startVoiceSearch();
+            } else {
+                for (SearchViewVoiceListener listener : mVoiceListeners) {
+                    listener.onVoiceSearchError(VOICE_SEARCH_ERROR_PERMISSION_DENIED);
+                }
+            }
+        }
     }
 
     private class SuggestionsAdapter extends RecyclerView.Adapter<SuggestionViewHolder> {
@@ -1321,8 +1808,8 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
             mSuggestionPointIcon = itemView.findViewById(R.id.list_item_pointer_icon);
             mSuggestionTextView = itemView.findViewById(R.id.list_item_suggestion);
             mDivider = itemView.findViewById(R.id.list_item_divider_line);
-            DrawableCompat.setTint(mSuggestionHistoryIcon.getDrawable(), mSuggestionsResolvedTintColor);
-            DrawableCompat.setTint(mSuggestionPointIcon.getDrawable(), mSuggestionsResolvedTintColor);
+            DrawableCompat.setTint(mSuggestionHistoryIcon.getDrawable(), mIconTintColor);
+            DrawableCompat.setTint(mSuggestionPointIcon.getDrawable(), mIconTintColor);
         }
 
         void bind(@NonNull final String suggestion) {
@@ -1337,9 +1824,58 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
         }
     }
 
+    private static class AnimatedVectorDrawableWrapper {
+
+        private Handler mHandler = new Handler();
+        private Animatable mDrawable;
+        private final long mDuration;
+        private Runnable mRepeatRunnable = new Runnable() {
+            @Override
+            public void run() {
+                if (mDrawable != null && mHandler != null) {
+                    mDrawable.start();
+                    mHandler.postDelayed(this, mDuration);
+                }
+            }
+        };
+
+        private AnimatedVectorDrawableWrapper(@NonNull Animatable drawable, long duration) {
+            mDrawable = drawable;
+            mDuration = duration;
+        }
+
+        private void repeat() {
+            if (mDrawable != null && mRepeatRunnable != null && mHandler != null) {
+                mDrawable.start();
+                mHandler.postDelayed(mRepeatRunnable, mDuration);
+            }
+        }
+
+        private void stop() {
+            if (mDrawable != null && mRepeatRunnable != null && mHandler != null) {
+                mDrawable.stop();
+                mHandler.removeCallbacks(mRepeatRunnable);
+            }
+        }
+
+        private void destroy() {
+            if (mDrawable != null && mRepeatRunnable != null && mHandler != null) {
+                mDrawable.stop();
+                mHandler.removeCallbacks(mRepeatRunnable);
+            }
+            mDrawable = null;
+            mRepeatRunnable = null;
+            mHandler = null;
+        }
+    }
+
     @Retention(SOURCE)
-    @IntDef({STATE_DEFAULT, STATE_FOCUSED_EMPTY, STATE_FOCUSED_TEXT_PRESENT,
-            STATE_FOCUSED_TEXT_PRESENT_DELAY_SEARCH, STATE_UNFOCUSED_TEXT_PRESENT})
+    @IntDef({STATE_DEFAULT,
+            STATE_FOCUSED_EMPTY,
+            STATE_FOCUSED_TEXT_PRESENT,
+            STATE_FOCUSED_TEXT_PRESENT_DELAY_SEARCH,
+            STATE_UNFOCUSED_TEXT_PRESENT,
+            STATE_VOICE_LISTENING})
     private @interface MaterialSearchViewState {}
 
     public static final int STATE_DEFAULT = 0;
@@ -1347,6 +1883,7 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
     public static final int STATE_FOCUSED_TEXT_PRESENT = 2;
     public static final int STATE_FOCUSED_TEXT_PRESENT_DELAY_SEARCH = 3;
     public static final int STATE_UNFOCUSED_TEXT_PRESENT = 4;
+    public static final int STATE_VOICE_LISTENING = 5;
 
     @SuppressWarnings({"unused", "WeakerAccess"})
     public interface SearchViewInteractionListener extends SearchViewSearchListener {
@@ -1364,11 +1901,25 @@ public class MaterialSearchView extends LinearLayout implements DatabaseReadSear
 
     @SuppressWarnings({"unused", "WeakerAccess"})
     public interface SearchViewVoiceListener {
-        void onVoiceSearchFailed(int error);
+        /**
+         * Speech RecognitionListener Error Codes
+         * int 1 - ERROR_NETWORK_TIMEOUT - Network operation timed out.
+         * int 2 - ERROR_NETWORK - Other network related errors.
+         * int 3 - ERROR_AUDIO - Audio recording error.
+         * int 4 - ERROR_SERVER - Server sends error status.
+         * int 5 - ERROR_CLIENT - Other client side errors.
+         * int 6 - ERROR_SPEECH_TIMEOUT - No speech input
+         * int 7 - ERROR_NO_MATCH - No recognition result matched.
+         * int 8 - ERROR_RECOGNIZER_BUSY - RecognitionService busy.
+         * int 9 - ERROR_INSUFFICIENT_PERMISSIONS - Insufficient permissions
+         **/
+        int VOICE_SEARCH_ERROR_UNAVAILABLE = 100;
+        int VOICE_SEARCH_ERROR_MISSING_CONTEXT = 110;
+        int VOICE_SEARCH_ERROR_PERMISSION_NEEDED = 120;
+        int VOICE_SEARCH_ERROR_PERMISSION_DENIED = 130;
+        int VOICE_SEARCH_ERROR_NO_RESULTS = 140;
 
-        void onVoiceSearchPermissionNeeded();
-
-        void onVoiceSearchIncompatible();
+        void onVoiceSearchError(int error);
 
         void onVoiceSearch(@NonNull String searchTerm);
     }

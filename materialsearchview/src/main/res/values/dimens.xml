@@ -3,10 +3,12 @@
     <dimen name="activity_vertical_margin">16dp</dimen>
     <dimen name="activity_horizontal_margin">16dp</dimen>
     <dimen name="activity_double_margin">32dp</dimen>
-    <dimen name="search_bar_height">48dp</dimen>
+    <dimen name="material_search_view_height">48dp</dimen>
     <dimen name="padding_for_icon">64dp</dimen>
     <dimen name="icon_size">24dp</dimen>
     <dimen name="small_margin">8dp</dimen>
     <dimen name="medium_margin">12dp</dimen>
-    <dimen name="row_height">48dp</dimen>
+    <dimen name="suggestion_row_height">48dp</dimen>
+    <item name="hint_pressed_alpha" format="float" type="dimen">0.70</item>
+    <item name="hint_alpha" format="float" type="dimen">0.50</item>
 </resources>
