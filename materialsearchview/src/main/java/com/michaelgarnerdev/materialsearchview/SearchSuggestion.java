@@ -4,10 +4,7 @@ import android.os.Parcel;
 import android.os.Parcelable;
 import android.support.annotation.NonNull;
 
-/**
- * Created by mgarner on 7/29/2017.
- */
-
+@SuppressWarnings({"WeakerAccess", "unused"})
 public class SearchSuggestion implements Parcelable {
 
     @NonNull

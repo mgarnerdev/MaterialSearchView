@@ -35,7 +35,7 @@
             android:background="@null"
             android:hint="@string/material_search_view_input_hint"
             android:imeOptions="actionSearch"
-            android:inputType="textAutoComplete"
+            android:inputType="textNoSuggestions"
             android:lines="1"
             android:maxLines="1"
             android:paddingEnd="@dimen/material_search_view_height"

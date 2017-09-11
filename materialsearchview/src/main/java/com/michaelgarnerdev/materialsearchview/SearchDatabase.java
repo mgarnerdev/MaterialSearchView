@@ -2,6 +2,7 @@ package com.michaelgarnerdev.materialsearchview;
 
 import android.content.Context;
 import android.database.Cursor;
+import android.database.DatabaseUtils;
 import android.database.sqlite.SQLiteDatabase;
 import android.database.sqlite.SQLiteOpenHelper;
 import android.os.AsyncTask;
@@ -24,8 +25,8 @@ import static java.lang.annotation.RetentionPolicy.SOURCE;
  * Database for searches.
  */
 
-public class SearchDatabase extends SQLiteOpenHelper {
-    public static final int DATABASE_VERSION = 1;
+class SearchDatabase extends SQLiteOpenHelper {
+    private static final int DATABASE_VERSION = 1;
     private static final String DATABASE_NAME = "msv_searches.db";
     private static final String TEXT_TYPE = " TEXT";
     private static final String REAL_TYPE = " REAL";
@@ -38,7 +39,7 @@ public class SearchDatabase extends SQLiteOpenHelper {
     private static SQLiteDatabase sWritableDatabase;
     private static SQLiteDatabase sReadableDatabase;
 
-    public static synchronized void init(@NonNull Context context) {
+    static synchronized void init(@NonNull Context context) {
         if (sInstance == null) {
             sInstance = new SearchDatabase(context.getApplicationContext());
         }
@@ -56,7 +57,7 @@ public class SearchDatabase extends SQLiteOpenHelper {
         }
     }
 
-    public static void destroy() {
+    static void destroy() {
         sInstance = null;
         if (sWritableDatabase != null) {
             sWritableDatabase.close();
@@ -137,8 +138,8 @@ public class SearchDatabase extends SQLiteOpenHelper {
         String insertQuery = "INSERT OR IGNORE INTO " +
                 SEARCHES_TABLE_NAME + "(" +
                 COLUMN_NAME_SEARCH_TERM + COMMA_SEP + COLUMN_NAME_SEARCH_DATE +
-                ") VALUES('" + searchSuggestion.getSearchTerm() + "'" + COMMA_SEP +
-                "'" + searchSuggestion.getDate() + "')";
+                ") VALUES(" + DatabaseUtils.sqlEscapeString(searchSuggestion.getSearchTerm()) + COMMA_SEP
+                + DatabaseUtils.sqlEscapeString(searchSuggestion.getDate()) + ")";
         return database.rawQuery(insertQuery, null).getCount() != 0;
     }
 
@@ -149,13 +150,13 @@ public class SearchDatabase extends SQLiteOpenHelper {
         return task;
     }
 
-    public static GetPerformedSearchesTask getPerformedSearches(@NonNull DatabaseReadSearchesListener listener) {
+    static GetPerformedSearchesTask getPerformedSearches(@NonNull DatabaseReadSearchesListener listener) {
         GetPerformedSearchesTask task = new GetPerformedSearchesTask(0, listener);
         task.execute();
         return task;
     }
 
-    public static GetPerformedSearchesTask getPerformedSearches(int limit, DatabaseReadSearchesListener listener) {
+    static GetPerformedSearchesTask getPerformedSearches(int limit, DatabaseReadSearchesListener listener) {
         GetPerformedSearchesTask task = new GetPerformedSearchesTask(limit, listener);
         task.execute();
         return task;
@@ -171,10 +172,11 @@ public class SearchDatabase extends SQLiteOpenHelper {
         return new SearchSuggestion(cursor.getString(1), cursor.getString(2));
     }
 
-    public static void deleteDatabase(@Nullable DatabaseTaskListener listener) {
+    static void deleteDatabase(@Nullable DatabaseTaskListener listener) {
         new DeleteDatabaseTask(listener).execute();
     }
 
+    @SuppressWarnings("unused")
     private static class AddPerformedSearchTask extends AsyncTask<SearchSuggestion, Void, Boolean> {
         private DatabaseTaskListener mListener = null;
 
@@ -221,6 +223,7 @@ public class SearchDatabase extends SQLiteOpenHelper {
         }
     }
 
+    @SuppressWarnings("unused")
     private static class AddPerformedSearchesTask extends AsyncTask<Void, Void, Boolean> {
         private ArrayList<SearchSuggestion> mSearchSuggestions;
         private DatabaseTaskListener mListener = null;
@@ -268,7 +271,8 @@ public class SearchDatabase extends SQLiteOpenHelper {
         }
     }
 
-    public static class GetPerformedSearchesTask extends AsyncTask<Void, Void, ArrayList<SearchSuggestion>> {
+    @SuppressWarnings("unused")
+    static class GetPerformedSearchesTask extends AsyncTask<Void, Void, ArrayList<SearchSuggestion>> {
         private int mRowLimit = 0;
         private DatabaseReadSearchesListener mListener = null;
 
@@ -316,7 +320,7 @@ public class SearchDatabase extends SQLiteOpenHelper {
         }
     }
 
-    public static class GetPerformedSearchesStartingWithTask extends AsyncTask<Void, Void, ArrayList<SearchSuggestion>> {
+    static class GetPerformedSearchesStartingWithTask extends AsyncTask<Void, Void, ArrayList<SearchSuggestion>> {
         private final String mStartsWith;
         private int mLimit = 0;
         private DatabaseReadSearchesListener mListener = null;
@@ -354,7 +358,7 @@ public class SearchDatabase extends SQLiteOpenHelper {
             return "SELECT * FROM "
                     + SEARCHES_TABLE_NAME
                     + " WHERE LOWER(" + COLUMN_NAME_SEARCH_TERM + ")"
-                    + " LIKE '" + startsWith.toLowerCase() + "%'"
+                    + " LIKE " + DatabaseUtils.sqlEscapeString(startsWith.toLowerCase() + "%")
                     + " ORDER BY " + COLUMN_NAME_SEARCH_DATE + " DESC LIMIT " + String.valueOf(limit);
         }
 
@@ -366,13 +370,13 @@ public class SearchDatabase extends SQLiteOpenHelper {
             }
         }
 
-        public void cancel() {
+        void cancel() {
             mListener = null;
             cancel(true);
         }
     }
 
-    public static class GetRecentSearchesTask extends AsyncTask<Void, Void, ArrayList<SearchSuggestion>> {
+    static class GetRecentSearchesTask extends AsyncTask<Void, Void, ArrayList<SearchSuggestion>> {
 
         private int mLimit = DEFAULT_LIMIT;
         private DatabaseReadSearchesListener mListener = null;
@@ -416,12 +420,13 @@ public class SearchDatabase extends SQLiteOpenHelper {
             }
         }
 
-        public void cancel() {
+        void cancel() {
             mListener = null;
             cancel(true);
         }
     }
 
+    @SuppressWarnings("unused")
     private static class DeleteDatabaseTask extends AsyncTask<Void, Void, Boolean> {
 
         private DatabaseTaskListener mListener = null;

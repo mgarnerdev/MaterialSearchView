@@ -84,6 +84,7 @@ public class MaterialSearchView extends LinearLayout implements
     private static final int DEFAULT_MAX_SUGGESTIONS_SHOWN = 5;
     private static final int DEFAULT_MAX_SUGGESTIONS_PERSISTED = 1000;
     private static final boolean DEFAULT_VOICE_FEATURES_ENABLED = VERSION.SDK_INT < VERSION_CODES.M;
+    private static final long CLEAR_TEXT_DELAY_TIME = 100;
 
     private WeakReference<Context> mContext;
 
@@ -102,6 +103,7 @@ public class MaterialSearchView extends LinearLayout implements
     private GetPerformedSearchesStartingWithTask mFilterSearchTask;
     private GetRecentSearchesTask mRecentSearchesTask;
     private Runnable mFilterRunnable;
+    private Runnable mClearTextRunnable;
     private RecyclerView mSuggestionsRecyclerView;
     private SuggestionsAdapter mSuggestionsAdapter;
     private ArrayList<SearchViewSearchListener> mSearchListeners = new ArrayList<>();
@@ -292,6 +294,7 @@ public class MaterialSearchView extends LinearLayout implements
         });
 
         mSearchTextChangedListener = new TextWatcher() {
+
             @Override
             public void beforeTextChanged(CharSequence charSequence, int i, int i1, int i2) {
 
@@ -299,23 +302,25 @@ public class MaterialSearchView extends LinearLayout implements
 
             @Override
             public void onTextChanged(CharSequence charSequence, int i, int i1, int i2) {
-                if (charSequence != null && charSequence.length() > 0) {
-                    if (mCurrentState != STATE_FOCUSED_TEXT_PRESENT_DELAY_SEARCH) {
-                        moveToState(STATE_FOCUSED_TEXT_PRESENT_DELAY_SEARCH);
-                    } else {
-                        timedFilterSearchSuggestions(getSearchText());
-                    }
-                } else {
-                    moveToState(STATE_FOCUSED_EMPTY);
-                }
             }
 
             @Override
             public void afterTextChanged(final Editable editable) {
-
+                String currentText = editable.toString();
+                if (currentText.length() > 0) {
+                    mHandler.removeCallbacks(getOrCreateEmptyTextRunnable());
+                    if (mCurrentState != STATE_FOCUSED_TEXT_PRESENT_DELAY_SEARCH) {
+                        moveToState(STATE_FOCUSED_TEXT_PRESENT_DELAY_SEARCH);
+                    } else {
+                        timedFilterSearchSuggestions(currentText);
+                    }
+                } else {
+                    mHandler.postDelayed(getOrCreateEmptyTextRunnable(), CLEAR_TEXT_DELAY_TIME);
+                }
             }
         };
 
+        mSearchInputEditText.removeTextChangedListener(mSearchTextChangedListener);
         mSearchInputEditText.addTextChangedListener(mSearchTextChangedListener);
 
         mOnEditorActionListener = new OnEditorActionListener() {
@@ -349,6 +354,21 @@ public class MaterialSearchView extends LinearLayout implements
                 }
             }
         });
+    }
+
+    private Runnable getOrCreateEmptyTextRunnable() {
+        if (mClearTextRunnable == null) {
+            mClearTextRunnable = new Runnable() {
+
+                @Override
+                public void run() {
+                    if (getSearchText().length() == 0) {
+                        moveToState(STATE_FOCUSED_EMPTY);
+                    }
+                }
+            };
+        }
+        return mClearTextRunnable;
     }
 
     private void setDefaultAttributes() {
@@ -1415,9 +1435,24 @@ public class MaterialSearchView extends LinearLayout implements
             Context context = mContext.get();
             if (context != null) {
                 InputMethodManager inputManager = (InputMethodManager)
-                        mContext.get().getSystemService(Context.INPUT_METHOD_SERVICE);
-                inputManager.hideSoftInputFromWindow(mSearchInputEditText.getWindowToken(),
-                        InputMethodManager.HIDE_NOT_ALWAYS);
+                        context.getSystemService(Context.INPUT_METHOD_SERVICE);
+                if (inputManager != null) {
+                    inputManager.hideSoftInputFromWindow(mSearchInputEditText.getWindowToken(),
+                            InputMethodManager.HIDE_NOT_ALWAYS);
+                }
+            }
+        }
+    }
+
+    private void openKeyboard() {
+        if (mContext != null && mSearchInputEditText != null) {
+            Context context = mContext.get();
+            if (context != null) {
+                InputMethodManager inputManager = (InputMethodManager)
+                        context.getSystemService(Context.INPUT_METHOD_SERVICE);
+                if (inputManager != null) {
+                    inputManager.showSoftInput(mSearchInputEditText, InputMethodManager.SHOW_IMPLICIT);
+                }
             }
         }
     }
@@ -1442,6 +1477,15 @@ public class MaterialSearchView extends LinearLayout implements
         }
     }
 
+    private void requestSearchViewFocus() {
+        if (mSearchInputEditText != null) {
+            if (!mSearchInputEditText.hasFocus()) {
+                mSearchInputEditText.requestFocus();
+                openKeyboard();
+            }
+        }
+    }
+
     private void emptySearchView() {
         if (mSearchInputEditText != null) {
             mSearchInputEditText.removeTextChangedListener(mSearchTextChangedListener);
@@ -1452,9 +1496,7 @@ public class MaterialSearchView extends LinearLayout implements
 
     private void timedFilterSearchSuggestions(@NonNull String searchTerm) {
         if (mDatabaseSuggestionsEnabled) {
-            if (mFilterRunnable != null) {
-                mHandler.removeCallbacks(mFilterRunnable);
-            }
+            mHandler.removeCallbacks(mFilterRunnable);
             mHandler.postDelayed(createFilterRunnable(searchTerm), TIME_SEARCH_AFTER_KEY_PRESS_DELAY);
         }
     }
@@ -1545,6 +1587,7 @@ public class MaterialSearchView extends LinearLayout implements
                     showRecentSearches();
                     showMic();
                     hideClear();
+                    requestSearchViewFocus();
                     break;
                 case STATE_FOCUSED_TEXT_PRESENT:
                     stopVoiceRecognitionIfNecessary();
@@ -1553,6 +1596,7 @@ public class MaterialSearchView extends LinearLayout implements
                     setKeyboardActionListener();
                     hideMic();
                     showClear();
+                    requestSearchViewFocus();
                     break;
                 case STATE_UNFOCUSED_TEXT_PRESENT:
                     stopVoiceRecognitionIfNecessary();
@@ -1568,9 +1612,9 @@ public class MaterialSearchView extends LinearLayout implements
                     stopVoiceRecognitionIfNecessary();
                     showSearchView();
                     setKeyboardActionListener();
-                    timedFilterSearchSuggestions(getSearchText());
                     hideMic();
                     showClear();
+                    requestSearchViewFocus();
                     break;
                 case STATE_VOICE_LISTENING:
                     cancelSuggestions();
@@ -1584,8 +1628,8 @@ public class MaterialSearchView extends LinearLayout implements
                     cancelSuggestions();
                     clearKeyboardActionListener();
                     closeKeyboard();
-                    clearSearchViewFocus();
                     emptySearchView();
+                    clearSearchViewFocus();
                     clearSuggestions();
                     showMic();
                     hideClear();
