@@ -40,16 +40,18 @@ The minimum API level supported by this library is API 16.
 MaterialSearchView is available via jCenter. jCenter is the default Maven repository used by Android Studio.
 Simply add the following maven url to your project-level `build.gradle`
 ```
-repositories {
-    maven {
-        url  "https://dl.bintray.com/michaelgarnerdev/materialsearchview"
+allProjects {
+    repositories {
+        maven {
+            url  "https://dl.bintray.com/michaelgarnerdev/materialsearchview"
+        }
     }
 }
 ```
 
 And then add the following to your app-level `build.gradle`
 ```
-compile 'com.michaelgarnerdev.materialsearchview:materialsearchview:0.1.0'
+compile 'com.michaelgarnerdev.materialsearchview:materialsearchview:0.1.0@aar'
 ```
 
 You will also need the following support libraries:
