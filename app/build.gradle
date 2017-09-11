@@ -25,5 +25,5 @@ dependencies {
 
     compile "com.android.support:appcompat-v7:${versions.supportLibrary}"
     compile "com.android.support:design:${versions.supportLibrary}"
-    compile project(":materialsearchview")
+    compile 'com.michaelgarnerdev.materialsearchview:materialsearchview:0.1.0'
 }

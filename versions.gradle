@@ -23,6 +23,9 @@ ext.versions = [
         versionName   : "0.1.0",
         versionCode   : 100,
         gradlePlugin  : "2.3.3",
-        supportLibrary: "26.0.0",
-        bintrayRelease: "0.5.0"
+        supportLibrary: "26.0.2",
+        bintrayRelease: "0.5.0",
+        groupId       : "com.michaelgarnerdev.materialsearchview",
+        artifactId    : "materialsearchview",
+        inceptionYear : "2017"
 ]
