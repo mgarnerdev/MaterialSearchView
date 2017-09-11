@@ -12,6 +12,8 @@ import android.support.v7.app.AlertDialog;
 import android.support.v7.app.AlertDialog.Builder;
 import android.support.v7.app.AppCompatActivity;
 import android.util.Log;
+import android.view.View;
+import android.widget.Button;
 import android.widget.LinearLayout;
 
 import com.michaelgarnerdev.materialsearchview.MaterialSearchView;
@@ -31,7 +33,14 @@ public class MainActivity extends AppCompatActivity implements
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         mRootLayout = findViewById(R.id.root_view);
-        mMaterialSearchView = mRootLayout.findViewById(R.id.material_search_view);
+        mMaterialSearchView = findViewById(R.id.material_search_view);
+        Button clearSearchHistory = findViewById(R.id.clear_search_history_button);
+        clearSearchHistory.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View view) {
+                mMaterialSearchView.clearSearchHistory();
+            }
+        });
     }
 
     @Override

@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">MaterialSearchViewSample</string>
+    <string name="clear_search_history">Clear Search History</string>
 </resources>

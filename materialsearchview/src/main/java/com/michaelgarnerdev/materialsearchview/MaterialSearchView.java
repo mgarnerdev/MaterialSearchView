@@ -617,6 +617,7 @@ public class MaterialSearchView extends LinearLayout implements
                 SearchDatabase.init(context);
             }
         }
+        clearSuggestions();
     }
 
     /**
