@@ -26,8 +26,9 @@ The minimum API level supported by this library is API 16.
 + [License](#license)
 
 ### Examples
-
+<p align="center">
 <img src="https://github.com/mgarnerdev/MaterialSearchView/raw/development/art/material-search-view-demo.gif" alt="Demo GIF" width="300" style="max-width:100%;display: block;margin: auto;">
+</p>
 
 
 ![Screenshots](https://github.com/mgarnerdev/MaterialSearchView/blob/development/art/screenshots.jpg)
