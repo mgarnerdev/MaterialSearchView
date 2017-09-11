@@ -20,6 +20,22 @@ import com.michaelgarnerdev.materialsearchview.MaterialSearchView;
 import com.michaelgarnerdev.materialsearchview.MaterialSearchView.SearchViewSearchListener;
 import com.michaelgarnerdev.materialsearchview.MaterialSearchView.SearchViewVoiceListener;
 
+/**
+ * <p>
+ * Copyright 2017 Michael Garner (mgarnerdev)
+ * <p>
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * <p>
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * <p>
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 public class MainActivity extends AppCompatActivity implements
         SearchViewSearchListener,
         SearchViewVoiceListener {
@@ -51,19 +67,9 @@ public class MainActivity extends AppCompatActivity implements
     }
 
     @Override
-    public void onRequestPermissionsResult(int requestCode,
-                                           @NonNull String[] permissions,
-                                           @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (mMaterialSearchView != null) {
-            mMaterialSearchView.handlePermissionResult(requestCode, permissions, grantResults);
-        }
-    }
-
-    @Override
     protected void onStop() {
         super.onStop();
-        if (mMaterialSearchView != null && VERSION.SDK_INT >= VERSION_CODES.M) {
+        if (VERSION.SDK_INT >= VERSION_CODES.N) {
             mMaterialSearchView.removeListener((SearchViewSearchListener) this);
             mMaterialSearchView.removeListener((SearchViewVoiceListener) this);
         }
@@ -72,7 +78,7 @@ public class MainActivity extends AppCompatActivity implements
     @Override
     protected void onPause() {
         super.onPause();
-        if (mMaterialSearchView != null && VERSION.SDK_INT < VERSION_CODES.M) {
+        if (VERSION.SDK_INT < VERSION_CODES.N) {
             mMaterialSearchView.removeListener((SearchViewSearchListener) this);
             mMaterialSearchView.removeListener((SearchViewVoiceListener) this);
         }
@@ -80,16 +86,28 @@ public class MainActivity extends AppCompatActivity implements
 
     @Override
     public void onBackPressed() {
-        if (mMaterialSearchView != null) {
-            if (!mMaterialSearchView.onBackPressed()) {
-                super.onBackPressed();
-            }
+        if (!mMaterialSearchView.onBackPressed()) {
+            super.onBackPressed();
         }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode,
+                                           @NonNull String[] permissions,
+                                           @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        mMaterialSearchView.handlePermissionResult(requestCode, permissions, grantResults);
     }
 
     @Override
     public void onSearch(@NonNull String searchTerm) {
         Log.d(TAG, "SEARCH TERM: " + searchTerm);
+        Snackbar.make(mRootLayout, searchTerm, Snackbar.LENGTH_SHORT).show();
+    }
+
+    @Override
+    public void onVoiceSearch(@NonNull String searchTerm) {
+        Log.d(TAG, "VOICE SEARCH TERM: " + searchTerm);
         Snackbar.make(mRootLayout, searchTerm, Snackbar.LENGTH_SHORT).show();
     }
 
@@ -119,11 +137,5 @@ public class MainActivity extends AppCompatActivity implements
                 builder.show();
                 break;
         }
-    }
-
-    @Override
-    public void onVoiceSearch(@NonNull String searchTerm) {
-        Log.d(TAG, "VOICE SEARCH TERM: " + searchTerm);
-        Snackbar.make(mRootLayout, searchTerm, Snackbar.LENGTH_SHORT).show();
     }
 }
