@@ -27,8 +27,8 @@ The minimum API level supported by this library is API 16.
 
 ### Examples
 
-![Demo GIF](https://www.github.com/mgarnerdev/MaterialSearchView/art/material-search-view-demo.gif)
-![Screenshots](https://www.github.com/mgarnerdev/MaterialSearchView/art/screenshots.jpg)
+![Demo GIF](https://github.com/mgarnerdev/MaterialSearchView/blob/development/art/material-search-view-demo.gif)
+![Screenshots](https://github.com/mgarnerdev/MaterialSearchView/blob/development/art/screenshots.jpg)
 
 
 ### Add MaterialSearchView to Your Project
