@@ -21,9 +21,9 @@ android {
 }
 
 dependencies {
-    compile fileTree(include: ['*.jar'], dir: 'libs')
-
     compile "com.android.support:appcompat-v7:${versions.supportLibrary}"
+    compile "com.android.support:cardview-v7:${versions.supportLibrary}"
+    compile "com.android.support:recyclerview-v7:${versions.supportLibrary}"
     compile "com.android.support:design:${versions.supportLibrary}"
-    compile 'com.michaelgarnerdev.materialsearchview:materialsearchview:0.1.0'
+    compile "com.michaelgarnerdev.materialsearchview:materialsearchview:0.1.0@aar"
 }
