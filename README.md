@@ -42,9 +42,7 @@ Simply add the following maven url to your project-level `build.gradle`
 ```
 allProjects {
     repositories {
-        maven {
-            url  "https://dl.bintray.com/michaelgarnerdev/materialsearchview"
-        }
+        jcenter()
     }
 }
 ```
